@@ -1,0 +1,12 @@
+{
+  "name": "vlogger-bluesky-test",
+  "version": "1.0.0",
+  "description": "Temporary Bluesky API test for Vlogger",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
