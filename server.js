@@ -2,112 +2,260 @@ const http = require("http");
 
 const PORT = process.env.PORT || 3000;
 
+function sendJson(res, data) {
+    res.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8"
+    });
+
+    res.end(JSON.stringify(data, null, 2));
+}
+
 const server = http.createServer(async (req, res) => {
 
-    res.setHeader("Content-Type", "application/json; charset=utf-8");
-
-    // Home
     if (req.url === "/" || req.url === "") {
-        res.writeHead(200);
-
-        return res.end(JSON.stringify({
-            status: "Vlogger Bluesky Test Server Running",
-            test: "/test-bluesky"
-        }, null, 2));
+        return sendJson(res, {
+            status: "Vlogger Bluesky Auth Test Server Running",
+            test: "/test-bluesky-auth"
+        });
     }
 
-    // Bluesky Test
-    if (req.url.startsWith("/test-bluesky")) {
+    if (req.url.startsWith("/test-bluesky-auth")) {
 
-        const blueskyUrl =
-            "https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts" +
-            "?q=india&sort=top&limit=5";
+        const identifier = process.env.BSKY_IDENTIFIER;
+        const password = process.env.BSKY_PASSWORD;
+
+        if (!identifier || !password) {
+            return sendJson(res, {
+                bluesky: "CONFIG_ERROR",
+                message: "BSKY_IDENTIFIER or BSKY_PASSWORD missing"
+            });
+        }
 
         try {
 
-            console.log("Testing Bluesky...");
-            console.log(blueskyUrl);
+            // =========================================
+            // STEP 1: LOGIN TO BLUESKY PDS
+            // =========================================
 
-            const response = await fetch(blueskyUrl, {
-                method: "GET",
-                headers: {
-                    "Accept": "application/json",
-                    "User-Agent": "Vlogger-Bluesky-Test/1.0"
+            console.log("🔐 Logging into Bluesky...");
+
+            const loginResponse = await fetch(
+                "https://bsky.social/xrpc/com.atproto.server.createSession",
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                        "User-Agent": "Vlogger-Bluesky-Test/1.0"
+                    },
+
+                    body: JSON.stringify({
+                        identifier: identifier,
+                        password: password
+                    })
                 }
-            });
+            );
 
-            const body = await response.text();
+            const loginText = await loginResponse.text();
 
-            console.log("Bluesky HTTP Status:", response.status);
+            console.log(
+                "Bluesky Login Status:",
+                loginResponse.status
+            );
 
-            if (!response.ok) {
+            if (!loginResponse.ok) {
 
-                console.log("Bluesky Error:", body);
-
-                res.writeHead(200);
-
-                return res.end(JSON.stringify({
-                    bluesky: "FAILED",
-                    status: response.status,
-                    contentType: response.headers.get("content-type"),
-                    response: body.substring(0, 1000)
-                }, null, 2));
+                return sendJson(res, {
+                    bluesky: "LOGIN_FAILED",
+                    loginStatus: loginResponse.status,
+                    contentType:
+                        loginResponse.headers.get("content-type"),
+                    response:
+                        loginText.substring(0, 1000)
+                });
             }
 
-            let data;
+            let session;
 
             try {
-                data = JSON.parse(body);
-            } catch (error) {
-
-                res.writeHead(200);
-
-                return res.end(JSON.stringify({
-                    bluesky: "INVALID_RESPONSE",
-                    status: response.status,
-                    response: body.substring(0, 1000)
-                }, null, 2));
+                session = JSON.parse(loginText);
+            } catch (e) {
+                return sendJson(res, {
+                    bluesky: "LOGIN_INVALID_JSON",
+                    loginStatus: loginResponse.status,
+                    response:
+                        loginText.substring(0, 1000)
+                });
             }
 
-            const posts = Array.isArray(data.posts)
-                ? data.posts
-                : [];
+            const accessJwt = session.accessJwt;
 
-            res.writeHead(200);
+            if (!accessJwt) {
+                return sendJson(res, {
+                    bluesky: "NO_ACCESS_TOKEN",
+                    loginStatus: loginResponse.status
+                });
+            }
 
-            return res.end(JSON.stringify({
-                bluesky: "WORKING",
-                status: response.status,
-                postsFound: posts.length,
+            console.log("✅ Bluesky login successful");
 
-                posts: posts.map(post => ({
-                    uri: post.uri || null,
-                    author: post.author?.handle || null,
-                    text: post.record?.text || null,
-                    hasEmbed: !!post.embed
-                }))
-            }, null, 2));
+            // =========================================
+            // STEP 2: AUTHENTICATED SEARCH
+            // IMPORTANT:
+            // Use user's PDS, NOT public.api.bsky.app
+            // =========================================
+
+            const searchUrl =
+                "https://bsky.social/xrpc/" +
+                "app.bsky.feed.searchPosts" +
+                "?q=india" +
+                "&sort=top" +
+                "&limit=5";
+
+            console.log("🔎 Testing authenticated search...");
+
+            const searchResponse = await fetch(
+                searchUrl,
+                {
+                    method: "GET",
+
+                    headers: {
+                        "Authorization":
+                            `Bearer ${accessJwt}`,
+
+                        "Accept":
+                            "application/json",
+
+                        "User-Agent":
+                            "Vlogger-Bluesky-Test/1.0"
+                    }
+                }
+            );
+
+            const searchText =
+                await searchResponse.text();
+
+            console.log(
+                "Authenticated Search Status:",
+                searchResponse.status
+            );
+
+            if (!searchResponse.ok) {
+
+                return sendJson(res, {
+                    bluesky: "AUTH_SEARCH_FAILED",
+
+                    loginStatus:
+                        loginResponse.status,
+
+                    loginWorking: true,
+
+                    searchStatus:
+                        searchResponse.status,
+
+                    contentType:
+                        searchResponse.headers.get(
+                            "content-type"
+                        ),
+
+                    response:
+                        searchText.substring(0, 1500)
+                });
+            }
+
+            let searchData;
+
+            try {
+                searchData =
+                    JSON.parse(searchText);
+            } catch (e) {
+
+                return sendJson(res, {
+                    bluesky:
+                        "SEARCH_INVALID_JSON",
+
+                    searchStatus:
+                        searchResponse.status,
+
+                    response:
+                        searchText.substring(0, 1500)
+                });
+            }
+
+            const posts =
+                Array.isArray(searchData.posts)
+                    ? searchData.posts
+                    : [];
+
+            // =========================================
+            // SUCCESS
+            // =========================================
+
+            return sendJson(res, {
+
+                bluesky:
+                    "AUTHENTICATED_WORKING",
+
+                loginStatus:
+                    loginResponse.status,
+
+                searchStatus:
+                    searchResponse.status,
+
+                handle:
+                    session.handle || null,
+
+                did:
+                    session.did || null,
+
+                postsFound:
+                    posts.length,
+
+                posts:
+                    posts.map(post => ({
+
+                        uri:
+                            post.uri || null,
+
+                        author:
+                            post.author?.handle || null,
+
+                        text:
+                            post.record?.text || null,
+
+                        hasEmbed:
+                            !!post.embed
+
+                    }))
+            });
 
         } catch (error) {
 
-            console.error("Bluesky Test Exception:", error);
+            console.error(
+                "Bluesky Auth Test Exception:",
+                error
+            );
 
-            res.writeHead(200);
-
-            return res.end(JSON.stringify({
+            return sendJson(res, {
                 bluesky: "EXCEPTION",
                 error: error.message
-            }, null, 2));
+            });
         }
     }
 
-    res.writeHead(404);
-
-    return res.end(JSON.stringify({
-        error: "Not Found"
-    }));
+    return sendJson(res, {
+        error: "Not Found",
+        available: [
+            "/test-bluesky-auth"
+        ]
+    });
 });
 
 server.listen(PORT, () => {
-    console.log(`Vlogger Bluesky Test Server running on port ${PORT}`);
+
+    console.log(
+        `Vlogger Bluesky Auth Test running on port ${PORT}`
+    );
+
 });
