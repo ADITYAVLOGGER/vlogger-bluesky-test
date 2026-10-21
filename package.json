@@ -1,12 +1,12 @@
 {
-  "name": "vlogger-bluesky-test",
+  "name": "vlogger-bluesky-api",
   "version": "1.0.0",
-  "description": "Temporary Bluesky API test for Vlogger",
+  "description": "Bluesky video discovery API for Vlogger",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   }
 }
