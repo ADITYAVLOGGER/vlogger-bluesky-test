@@ -5,7 +5,8 @@ const PORT = process.env.PORT || 3000;
 // ============================================================
 // CONFIG
 // ============================================================
-
+const MASTODON_ACCESS_TOKEN =
+    process.env.MASTODON_ACCESS_TOKEN || "";
 const BSKY_IDENTIFIER = process.env.BSKY_IDENTIFIER;
 const BSKY_PASSWORD = process.env.BSKY_PASSWORD;
 
@@ -2101,13 +2102,23 @@ async function fetchMastodonInstance(
                 {
                     method: "GET",
 
-                    headers: {
-                        "Accept":
-                            "application/json",
+                    // headers: {
+                    //     "Accept":
+                    //         "application/json",
 
-                        "User-Agent":
-                            "Vlogger/1.0"
-                    },
+                    //     "User-Agent":
+                    //         "Vlogger/1.0"
+                    // },
+                    headers: {
+    "Accept":
+        "application/json",
+
+    "User-Agent":
+        "Vlogger/1.0",
+
+    "Authorization":
+        `Bearer ${MASTODON_ACCESS_TOKEN}`
+},
 
                     signal:
                         controller.signal
