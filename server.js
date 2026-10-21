@@ -15,6 +15,50 @@ const MAX_OUTPUT_LIMIT = 20;
 const SEARCH_LIMIT = 50;
 
 // ============================================================
+// MASTODON CONFIG
+// ============================================================
+
+const MASTODON_TIMEOUT_MS = 8000;
+
+const MASTODON_COUNTRY_CONFIG = {
+    IN: {
+        instances: [
+            "mastodon.social"
+        ]
+    },
+
+    JP: {
+        instances: [
+            "mstdn.jp"
+        ]
+    },
+
+    DE: {
+        instances: [
+            "mastodon.social"
+        ]
+    },
+
+    BR: {
+        instances: [
+            "mastodon.social"
+        ]
+    },
+
+    AE: {
+        instances: [
+            "mastodon.social"
+        ]
+    },
+
+    GLOBAL: {
+        instances: [
+            "mastodon.social"
+        ]
+    }
+};
+
+// ============================================================
 // SESSION CACHE
 // ============================================================
 
@@ -1278,14 +1322,17 @@ const server =
                             status:
                                 "Vlogger Bluesky API Running",
 
-                            endpoints: {
+                           endpoints: {
 
-                                health:
-                                    "/health",
+    health:
+        "/health",
 
-                                vlogs:
-                                    "/api/bluesky/vlogs?country=IN&limit=10"
-                            }
+    bluesky:
+        "/api/bluesky/vlogs?country=IN&limit=10",
+
+    mastodon:
+        "/api/mastodon/vlogs?country=IN&limit=10"
+}
                         }
                     );
                 }
@@ -1436,6 +1483,184 @@ const server =
                 }
 
                 // ==================================================
+// MASTODON VLOG API
+// ==================================================
+
+if (
+    requestUrl.pathname ===
+    "/api/mastodon/vlogs"
+) {
+
+    const rawCountry =
+        cleanText(
+            requestUrl
+                .searchParams
+                .get("country")
+        );
+
+
+    const country =
+        (
+            rawCountry ||
+            "IN"
+        )
+            .toUpperCase()
+            .slice(0, 2);
+
+
+    const rawLimit =
+        Number(
+            requestUrl
+                .searchParams
+                .get("limit")
+        );
+
+
+    const limit =
+        Number.isFinite(rawLimit)
+            ? Math.min(
+                Math.max(
+                    Math.floor(rawLimit),
+                    1
+                ),
+                MAX_OUTPUT_LIMIT
+            )
+            : 10;
+
+
+    console.log("");
+    console.log(
+        "========================================"
+    );
+
+    console.log(
+        "🐘 VLOGGER MASTODON REQUEST"
+    );
+
+    console.log(
+        `country=${country}`
+    );
+
+    console.log(
+        `limit=${limit}`
+    );
+
+    console.log(
+        "========================================"
+    );
+
+
+    const started =
+        Date.now();
+
+
+    const result =
+        await fetchMastodonVlogs(
+            country,
+            limit
+        );
+
+
+    const duration =
+        Date.now() -
+        started;
+
+
+    console.log("");
+    console.log(
+        "🐘 MASTODON FINAL"
+    );
+
+    console.log(
+        `country=${country}`
+    );
+
+    console.log(
+        `instances=${result.instancesAttempted}`
+    );
+
+    console.log(
+        `authRestricted=${result.authRestrictedInstances}`
+    );
+
+    console.log(
+        `statuses=${result.statusesReceived}`
+    );
+
+    console.log(
+        `strong=${result.strongCountry}`
+    );
+
+    console.log(
+        `possible=${result.possibleCountry}`
+    );
+
+    console.log(
+        `weak=${result.weakCountry}`
+    );
+
+    console.log(
+        `returned=${result.videos.length}`
+    );
+
+    console.log(
+        `time=${duration}ms`
+    );
+
+
+    return sendJson(
+        res,
+        200,
+        {
+
+            status:
+                "success",
+
+            provider:
+                "mastodon",
+
+            country,
+
+            requested:
+                limit,
+
+            returned:
+                result.videos.length,
+
+            timeMs:
+                duration,
+
+            debug: {
+
+                instancesAttempted:
+                    result.instancesAttempted,
+
+                authRestrictedInstances:
+                    result.authRestrictedInstances,
+
+                statusesReceived:
+                    result.statusesReceived
+            },
+
+            tiers: {
+
+                strongCountry:
+                    result.strongCountry,
+
+                possibleCountry:
+                    result.possibleCountry,
+
+                weakCountry:
+                    result.weakCountry
+            },
+
+            videos:
+                result.videos
+        }
+    );
+}
+
+                // ==================================================
                 // 404
                 // ==================================================
 
@@ -1469,6 +1694,963 @@ const server =
             }
         }
     );
+
+// ============================================================
+// MASTODON HELPERS
+// ============================================================
+
+function stripHtml(value = "") {
+    return String(value)
+        .replace(/<br\s*\/?>/gi, " ")
+        .replace(/<\/p>/gi, " ")
+        .replace(/<[^>]*>/g, " ")
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&amp;/gi, "&")
+        .replace(/&lt;/gi, "<")
+        .replace(/&gt;/gi, ">")
+        .replace(/&quot;/gi, "\"")
+        .replace(/&#39;/gi, "'")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+
+function normalizeMastodonLanguage(language) {
+
+    if (!language) {
+        return null;
+    }
+
+    return String(language)
+        .trim()
+        .toLowerCase()
+        .split("-")[0] || null;
+}
+
+
+function mastodonCountryConfig(countryCode) {
+
+    const country =
+        String(countryCode || "GLOBAL")
+            .trim()
+            .toUpperCase();
+
+    return (
+        MASTODON_COUNTRY_CONFIG[country] ||
+        MASTODON_COUNTRY_CONFIG.GLOBAL
+    );
+}
+
+
+function mastodonCountryWords(countryCode) {
+
+    switch (
+        String(countryCode || "")
+            .toUpperCase()
+    ) {
+
+        case "IN":
+            return {
+                strong: [
+                    "india",
+                    "भारत",
+                    "hindustan",
+                    "delhi",
+                    "mumbai",
+                    "kolkata",
+                    "chennai",
+                    "bengaluru",
+                    "bangalore",
+                    "hyderabad",
+                    "pune",
+                    "patna",
+                    "jaipur",
+                    "lucknow",
+                    "ahmedabad",
+                    "chandigarh",
+                    "bhopal",
+                    "indore",
+                    "surat",
+                    "ranchi",
+                    "kochi"
+                ],
+
+                weak: [
+                    "indian"
+                ],
+
+                languages: [
+                    "hi",
+                    "bn",
+                    "ta",
+                    "te",
+                    "mr",
+                    "gu",
+                    "kn",
+                    "ml",
+                    "pa"
+                ]
+            };
+
+
+        case "JP":
+            return {
+                strong: [
+                    "japan",
+                    "日本",
+                    "tokyo",
+                    "東京",
+                    "osaka",
+                    "大阪",
+                    "kyoto",
+                    "京都"
+                ],
+
+                weak: [
+                    "japanese",
+                    "日本人"
+                ],
+
+                languages: [
+                    "ja"
+                ]
+            };
+
+
+        case "DE":
+            return {
+                strong: [
+                    "germany",
+                    "deutschland",
+                    "berlin",
+                    "munich",
+                    "münchen",
+                    "hamburg",
+                    "frankfurt",
+                    "cologne",
+                    "köln"
+                ],
+
+                weak: [
+                    "german",
+                    "deutsch"
+                ],
+
+                languages: [
+                    "de"
+                ]
+            };
+
+
+        case "BR":
+            return {
+                strong: [
+                    "brazil",
+                    "brasil",
+                    "sao paulo",
+                    "são paulo",
+                    "rio de janeiro",
+                    "brasilia",
+                    "brasília",
+                    "salvador"
+                ],
+
+                weak: [
+                    "brazilian",
+                    "brasileiro",
+                    "brasileira"
+                ],
+
+                languages: [
+                    "pt"
+                ]
+            };
+
+
+        case "AE":
+            return {
+                strong: [
+                    "uae",
+                    "united arab emirates",
+                    "الإمارات",
+                    "dubai",
+                    "دبي",
+                    "abu dhabi",
+                    "أبوظبي",
+                    "sharjah"
+                ],
+
+                weak: [
+                    "emirates"
+                ],
+
+                languages: [
+                    "ar"
+                ]
+            };
+
+
+        default:
+            return {
+                strong: [],
+                weak: [],
+                languages: []
+            };
+    }
+}
+
+
+function calculateMastodonCountryScore(
+    countryCode,
+    text,
+    language
+) {
+
+    const config =
+        mastodonCountryWords(countryCode);
+
+    const lower =
+        String(text || "")
+            .toLowerCase();
+
+    let score = 0;
+
+
+    // Strong geographic evidence
+    for (const word of config.strong) {
+
+        if (
+            lower.includes(
+                String(word).toLowerCase()
+            )
+        ) {
+
+            score += 35;
+        }
+    }
+
+
+    // Weak words like "Indian" should NOT by themselves
+    // prove that creator/post is actually located in India.
+    for (const word of config.weak) {
+
+        if (
+            lower.includes(
+                String(word).toLowerCase()
+            )
+        ) {
+
+            score += 10;
+        }
+    }
+
+
+    const lang =
+        normalizeMastodonLanguage(
+            language
+        );
+
+
+    if (
+        lang &&
+        config.languages.includes(lang)
+    ) {
+
+        score += 20;
+    }
+
+
+    return Math.min(
+        100,
+        score
+    );
+}
+
+
+function calculateMastodonVlogScore(
+    text,
+    tags = []
+) {
+
+    const combined =
+        (
+            String(text || "") +
+            " " +
+            tags.join(" ")
+        )
+            .toLowerCase();
+
+
+    const hardBlocks = [
+        "gameplay",
+        "walkthrough",
+        "gaming",
+        "tutorial",
+        "how to",
+        "course",
+        "podcast",
+        "trailer",
+        "movie trailer",
+        "episode",
+        "full movie",
+        "music video",
+        "official audio",
+        "album",
+        "unboxing",
+        "product review",
+        "news update",
+        "breaking news",
+        "screen recording"
+    ];
+
+
+    if (
+        hardBlocks.some(
+            word => combined.includes(word)
+        )
+    ) {
+
+        return 0;
+    }
+
+
+    let score = 20;
+
+
+    const vlogSignals = [
+        "vlog",
+        "vlogging",
+        "daily life",
+        "day in my life",
+        "my day",
+        "today",
+        "my trip",
+        "travel",
+        "travel diary",
+        "trip",
+        "vacation",
+        "holiday",
+        "journey",
+        "street food",
+        "food trip",
+        "cafe",
+        "restaurant",
+        "college life",
+        "campus",
+        "student life",
+        "work day",
+        "routine",
+        "morning routine",
+        "evening routine",
+        "weekend",
+        "city walk",
+        "road trip",
+        "shopping",
+        "family",
+        "grwm",
+        "behind the scenes",
+        "life in",
+        "living in"
+    ];
+
+
+    for (const signal of vlogSignals) {
+
+        if (
+            combined.includes(signal)
+        ) {
+
+            score += 15;
+        }
+    }
+
+
+    return Math.min(
+        100,
+        score
+    );
+}
+
+async function fetchMastodonInstance(
+    host,
+    countryCode
+) {
+
+    const controller =
+        new AbortController();
+
+    const timer =
+        setTimeout(
+            () => controller.abort(),
+            MASTODON_TIMEOUT_MS
+        );
+
+
+    try {
+
+        const url =
+            `https://${host}/api/v1/timelines/public` +
+            `?local=false` +
+            `&only_media=true` +
+            `&limit=40`;
+
+
+        const response =
+            await fetch(
+                url,
+                {
+                    method: "GET",
+
+                    headers: {
+                        "Accept":
+                            "application/json",
+
+                        "User-Agent":
+                            "Vlogger/1.0"
+                    },
+
+                    signal:
+                        controller.signal
+                }
+            );
+
+
+        const body =
+            await response.text();
+
+
+        // ================================================
+        // AUTH REQUIRED
+        // ================================================
+
+        if (
+            response.status === 401 ||
+            response.status === 403 ||
+            response.status === 422
+        ) {
+
+            console.log(
+                `🐘 MASTODON AUTH/SERVER RESTRICTED | host=${host} | status=${response.status}`
+            );
+
+            return {
+                host,
+                status: response.status,
+                authRequired: true,
+                statuses: []
+            };
+        }
+
+
+        if (!response.ok) {
+
+            console.log(
+                `❌ MASTODON HTTP | host=${host} | status=${response.status} | body=${body.slice(0, 200)}`
+            );
+
+            return {
+                host,
+                status: response.status,
+                authRequired: false,
+                statuses: []
+            };
+        }
+
+
+        let json;
+
+
+        try {
+
+            json =
+                JSON.parse(body);
+
+        } catch (error) {
+
+            console.log(
+                `❌ MASTODON JSON ERROR | host=${host}`
+            );
+
+            return {
+                host,
+                status: response.status,
+                authRequired: false,
+                statuses: []
+            };
+        }
+
+
+        if (!Array.isArray(json)) {
+
+            return {
+                host,
+                status: response.status,
+                authRequired: false,
+                statuses: []
+            };
+        }
+
+
+        console.log(
+            `🐘 MASTODON OK | host=${host} | statuses=${json.length}`
+        );
+
+
+        return {
+            host,
+            status: response.status,
+            authRequired: false,
+            statuses: json
+        };
+
+
+    } catch (error) {
+
+        console.log(
+            `❌ MASTODON FETCH FAILED | host=${host} | ${error.message}`
+        );
+
+
+        return {
+            host,
+            status: 0,
+            authRequired: false,
+            statuses: []
+        };
+
+
+    } finally {
+
+        clearTimeout(timer);
+    }
+}
+
+function convertMastodonStatus(
+    status,
+    host,
+    countryCode
+) {
+
+    if (!status) {
+        return null;
+    }
+
+
+    if (status.sensitive === true) {
+        return null;
+    }
+
+
+    if (status.account?.bot === true) {
+        return null;
+    }
+
+
+    const attachments =
+        Array.isArray(
+            status.media_attachments
+        )
+            ? status.media_attachments
+            : [];
+
+
+    const video =
+        attachments.find(
+            item =>
+                String(item?.type || "")
+                    .toLowerCase() === "video"
+        );
+
+
+    if (!video) {
+        return null;
+    }
+
+
+    const videoUrl =
+        String(
+            video.url ||
+            video.remote_url ||
+            ""
+        ).trim();
+
+
+    if (!videoUrl) {
+        return null;
+    }
+
+
+    const description =
+        stripHtml(
+            status.content || ""
+        );
+
+
+    const tags =
+        Array.isArray(status.tags)
+            ? status.tags
+                .map(tag =>
+                    String(tag?.name || "")
+                        .trim()
+                )
+                .filter(Boolean)
+            : [];
+
+
+    const vlogScore =
+        calculateMastodonVlogScore(
+            description,
+            tags
+        );
+
+
+    if (vlogScore < 35) {
+        return null;
+    }
+
+
+    const language =
+        normalizeMastodonLanguage(
+            status.language
+        );
+
+
+    const creatorBio =
+        stripHtml(
+            status.account?.note || ""
+        );
+
+
+    const countryText =
+        [
+            description,
+            creatorBio,
+            tags.join(" ")
+        ].join(" ");
+
+
+    const countryScore =
+        calculateMastodonCountryScore(
+            countryCode,
+            countryText,
+            language
+        );
+
+
+    const likes =
+        Number(
+            status.favourites_count || 0
+        );
+
+
+    const comments =
+        Number(
+            status.replies_count || 0
+        );
+
+
+    const shares =
+        Number(
+            status.reblogs_count || 0
+        );
+
+
+    const engagementScore =
+        likes +
+        shares * 3 +
+        comments * 2;
+
+
+    const creatorName =
+        String(
+            status.account?.display_name ||
+            status.account?.username ||
+            "Mastodon Creator"
+        ).trim();
+
+
+    return {
+
+        id:
+            `mastodon_${host}_${status.id}`,
+
+        provider:
+            "mastodon",
+
+        videoUrl,
+
+        thumbnailUrl:
+            video.preview_url || null,
+
+        caption:
+            description,
+
+        language,
+
+        creatorId:
+            String(
+                status.account?.id || ""
+            ),
+
+        creatorName,
+
+        creatorHandle:
+            String(
+                status.account?.acct ||
+                status.account?.username ||
+                ""
+            ),
+
+        creatorAvatar:
+            status.account?.avatar || null,
+
+        originalPostUrl:
+            status.url || null,
+
+        countryCode:
+            countryScore >= 60
+                ? countryCode
+                : null,
+
+        countryScore,
+
+        vlogScore,
+
+        engagementScore,
+
+        likes,
+
+        comments,
+
+        shares,
+
+        indexedAt:
+            status.created_at || null,
+
+        sourceHost:
+            host
+    };
+}
+
+async function fetchMastodonVlogs(
+    countryCode,
+    requestedLimit
+) {
+
+    const country =
+        String(countryCode || "GLOBAL")
+            .trim()
+            .toUpperCase();
+
+
+    const limit =
+        Math.max(
+            1,
+            Math.min(
+                Number(requestedLimit) || 10,
+                30
+            )
+        );
+
+
+    const config =
+        mastodonCountryConfig(
+            country
+        );
+
+
+    const hosts =
+        [
+            ...new Set(
+                config.instances
+            )
+        ]
+            .slice(0, 3);
+
+
+    const results =
+        await Promise.all(
+            hosts.map(
+                host =>
+                    fetchMastodonInstance(
+                        host,
+                        country
+                    )
+            )
+        );
+
+
+    const videos = [];
+
+    let statusesReceived = 0;
+    let authRestrictedInstances = 0;
+
+
+    for (const result of results) {
+
+        statusesReceived +=
+            result.statuses.length;
+
+
+        if (result.authRequired) {
+
+            authRestrictedInstances++;
+
+            continue;
+        }
+
+
+        for (
+            const status of result.statuses
+        ) {
+
+            const video =
+                convertMastodonStatus(
+                    status,
+                    result.host,
+                    country
+                );
+
+
+            if (video) {
+
+                videos.push(video);
+            }
+        }
+    }
+
+
+    // ================================================
+    // DUPLICATE ID
+    // ================================================
+
+    const uniqueMap =
+        new Map();
+
+
+    for (const video of videos) {
+
+        if (
+            !uniqueMap.has(video.id)
+        ) {
+
+            uniqueMap.set(
+                video.id,
+                video
+            );
+        }
+    }
+
+
+    const unique =
+        Array.from(
+            uniqueMap.values()
+        );
+
+
+    // ================================================
+    // RANK
+    // ================================================
+
+    unique.sort(
+        (a, b) => {
+
+            if (
+                b.countryScore !==
+                a.countryScore
+            ) {
+
+                return (
+                    b.countryScore -
+                    a.countryScore
+                );
+            }
+
+
+            if (
+                b.vlogScore !==
+                a.vlogScore
+            ) {
+
+                return (
+                    b.vlogScore -
+                    a.vlogScore
+                );
+            }
+
+
+            return (
+                b.engagementScore -
+                a.engagementScore
+            );
+        }
+    );
+
+
+    const strong =
+        unique.filter(
+            item =>
+                item.countryScore >= 60
+        );
+
+
+    const possible =
+        unique.filter(
+            item =>
+                item.countryScore >= 35 &&
+                item.countryScore < 60
+        );
+
+
+    const weak =
+        unique.filter(
+            item =>
+                item.countryScore < 35
+        );
+
+
+    // Country first, but do not return 0 just because
+    // not enough country-specific videos exist.
+
+    const selected =
+        [
+            ...strong,
+            ...possible,
+            ...weak
+        ]
+            .slice(
+                0,
+                limit
+            );
+
+
+    return {
+
+        country,
+
+        requested:
+            limit,
+
+        instancesAttempted:
+            hosts.length,
+
+        authRestrictedInstances,
+
+        statusesReceived,
+
+        strongCountry:
+            strong.length,
+
+        possibleCountry:
+            possible.length,
+
+        weakCountry:
+            weak.length,
+
+        videos:
+            selected
+    };
+}
 
 // ============================================================
 // START
