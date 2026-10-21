@@ -1904,47 +1904,110 @@ function mastodonCountryWords(countryCode) {
 function calculateMastodonCountryScore(
     countryCode,
     text,
-    language
+    language,
+    tags = []
 ) {
+    const country =
+        String(countryCode || "GLOBAL")
+            .trim()
+            .toUpperCase();
+
+    /*
+     * GLOBAL feed me fake country confidence
+     * generate nahi karna.
+     */
+    if (
+        !country ||
+        country === "GLOBAL"
+    ) {
+        return 0;
+    }
+
 
     const config =
-        mastodonCountryWords(countryCode);
+        mastodonCountryWords(country);
 
-    const lower =
-        String(text || "")
-            .toLowerCase();
+
+    const safeTags =
+        Array.isArray(tags)
+            ? tags
+            : [];
+
+
+    const combined =
+        (
+            String(text || "") +
+            " " +
+            safeTags.join(" ")
+        )
+            .toLowerCase()
+            .replace(/[_#-]+/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+
 
     let score = 0;
 
 
-    // Strong geographic evidence
-    for (const word of config.strong) {
+    // ---------------------------------------------------------
+    // STRONG LOCATION SIGNAL
+    //
+    // India:
+    // india, delhi, mumbai, patna etc.
+    // ---------------------------------------------------------
+
+    for (
+        const rawWord of
+        (config.strong || [])
+    ) {
+
+        const word =
+            String(rawWord || "")
+                .toLowerCase()
+                .trim();
 
         if (
-            lower.includes(
-                String(word).toLowerCase()
-            )
+            word &&
+            combined.includes(word)
         ) {
-
             score += 35;
         }
     }
 
 
-    // Weak words like "Indian" should NOT by themselves
-    // prove that creator/post is actually located in India.
-    for (const word of config.weak) {
+    // ---------------------------------------------------------
+    // WEAK LOCATION SIGNAL
+    //
+    // Example: Indian
+    // Alone country proof nahi hai.
+    // ---------------------------------------------------------
+
+    for (
+        const rawWord of
+        (config.weak || [])
+    ) {
+
+        const word =
+            String(rawWord || "")
+                .toLowerCase()
+                .trim();
 
         if (
-            lower.includes(
-                String(word).toLowerCase()
-            )
+            word &&
+            combined.includes(word)
         ) {
-
             score += 10;
         }
     }
 
+
+    // ---------------------------------------------------------
+    // LANGUAGE BONUS
+    //
+    // Language alone country proof nahi hai.
+    // Hindi -> India useful signal,
+    // English -> bahut countries me common.
+    // ---------------------------------------------------------
 
     const lang =
         normalizeMastodonLanguage(
@@ -1952,12 +2015,68 @@ function calculateMastodonCountryScore(
         );
 
 
+    const languages =
+        Array.isArray(config.languages)
+            ? config.languages
+            : [];
+
+
     if (
         lang &&
-        config.languages.includes(lang)
+        languages.includes(lang)
     ) {
 
-        score += 20;
+        /*
+         * English bahut global hai.
+         * Isliye English ko small bonus.
+         */
+        if (lang === "en") {
+            score += 5;
+        } else {
+            score += 15;
+        }
+    }
+
+
+    // ---------------------------------------------------------
+    // COUNTRY-SPECIFIC HASHTAG
+    // ---------------------------------------------------------
+
+    const normalizedTags =
+        safeTags.map(
+            rawTag =>
+                String(rawTag || "")
+                    .toLowerCase()
+                    .replace(/^#/, "")
+                    .replace(/[_\-\s]+/g, "")
+                    .trim()
+        );
+
+
+    for (
+        const rawWord of
+        (config.strong || [])
+    ) {
+
+        const normalizedWord =
+            String(rawWord || "")
+                .toLowerCase()
+                .replace(/[_\-\s#]+/g, "")
+                .trim();
+
+
+        if (
+            normalizedWord &&
+            normalizedTags.includes(
+                normalizedWord
+            )
+        ) {
+            /*
+             * Explicit geographic hashtag
+             * normal text mention se stronger signal.
+             */
+            score += 15;
+        }
     }
 
 
@@ -1972,96 +2091,338 @@ function calculateMastodonVlogScore(
     text,
     tags = []
 ) {
+    const safeTags =
+        Array.isArray(tags)
+            ? tags
+            : [];
 
     const combined =
         (
             String(text || "") +
             " " +
-            tags.join(" ")
+            safeTags.join(" ")
         )
-            .toLowerCase();
+            .toLowerCase()
+            .replace(/[_#-]+/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
 
+
+    if (!combined) {
+        return 20;
+    }
+
+
+    // ---------------------------------------------------------
+    // HARD NEGATIVES
+    // Ye content Vlogger feed me nahi chahiye.
+    // ---------------------------------------------------------
 
     const hardBlocks = [
         "gameplay",
         "walkthrough",
-        "gaming",
+        "gaming stream",
+        "game stream",
+        "let's play",
+        "lets play",
+
         "tutorial",
-        "how to",
+        "how to tutorial",
+        "step by step tutorial",
         "course",
+        "lecture",
+
         "podcast",
-        "trailer",
+        "full podcast",
+
         "movie trailer",
-        "episode",
+        "official trailer",
         "full movie",
-        "music video",
+        "full episode",
+        "episode trailer",
+
+        "official music video",
         "official audio",
-        "album",
+        "full album",
+        "lyrics video",
+
         "unboxing",
         "product review",
-        "news update",
+        "tech review",
+
         "breaking news",
-        "screen recording"
+        "news update",
+        "news report",
+
+        "screen recording",
+        "software demo",
+        "app demo"
     ];
 
 
     if (
         hardBlocks.some(
-            word => combined.includes(word)
+            signal =>
+                combined.includes(signal)
         )
     ) {
-
         return 0;
     }
 
 
+    /*
+     * Base score intentionally > 0.
+     *
+     * Mastodon posts bahut baar short caption ke
+     * saath video upload karte hain.
+     */
     let score = 20;
 
 
-    const vlogSignals = [
-        "vlog",
-        "vlogging",
-        "daily life",
+    // ---------------------------------------------------------
+    // VERY STRONG VLOG SIGNALS
+    // ---------------------------------------------------------
+
+    const veryStrongSignals = [
+        "daily vlog",
+        "mini vlog",
+        "travel vlog",
+        "food vlog",
+        "family vlog",
+        "college vlog",
+        "student vlog",
+        "lifestyle vlog",
+
         "day in my life",
-        "my day",
-        "today",
-        "my trip",
-        "travel",
+        "a day in my life",
+        "week in my life",
+
         "travel diary",
-        "trip",
-        "vacation",
-        "holiday",
-        "journey",
-        "street food",
-        "food trip",
-        "cafe",
-        "restaurant",
-        "college life",
-        "campus",
-        "student life",
-        "work day",
-        "routine",
+        "travel journal",
+
+        "my day",
+        "my trip",
+        "my journey",
+
         "morning routine",
         "evening routine",
-        "weekend",
-        "city walk",
-        "road trip",
-        "shopping",
-        "family",
-        "grwm",
-        "behind the scenes",
+        "daily routine",
+
+        "college life",
+        "campus life",
+        "student life",
+
         "life in",
         "living in"
     ];
 
 
-    for (const signal of vlogSignals) {
+    for (const signal of veryStrongSignals) {
 
         if (
             combined.includes(signal)
         ) {
+            score += 25;
+        }
+    }
 
+
+    // ---------------------------------------------------------
+    // STRONG PERSONAL / LIFESTYLE SIGNALS
+    // ---------------------------------------------------------
+
+    const strongSignals = [
+        "vlog",
+        "vlogging",
+
+        "daily life",
+        "everyday life",
+
+        "travel",
+        "travelling",
+        "traveling",
+
+        "trip",
+        "vacation",
+        "holiday",
+        "journey",
+
+        "road trip",
+        "city walk",
+        "walking around",
+
+        "street food",
+        "food trip",
+        "food tour",
+
+        "cafe hopping",
+        "café hopping",
+
+        "restaurant",
+        "cafe",
+        "café",
+
+        "shopping",
+        "shopping day",
+
+        "weekend",
+        "weekend trip",
+
+        "family",
+        "family time",
+
+        "grwm",
+        "get ready with me",
+
+        "behind the scenes",
+
+        "work day",
+        "work life"
+    ];
+
+
+    for (const signal of strongSignals) {
+
+        if (
+            combined.includes(signal)
+        ) {
             score += 15;
+        }
+    }
+
+
+    // ---------------------------------------------------------
+    // PERSONAL-FIRST-PERSON SIGNALS
+    //
+    // Vlog me literal "vlog" hona compulsory nahi.
+    // ---------------------------------------------------------
+
+    const personalSignals = [
+        "my life",
+        "my morning",
+        "my evening",
+        "my weekend",
+        "my vacation",
+        "my holiday",
+        "my family",
+        "my college",
+        "my university",
+        "my campus",
+        "my city",
+        "my hometown",
+
+        "we went",
+        "we visited",
+        "we travelled",
+        "we traveled",
+
+        "i went",
+        "i visited",
+        "i travelled",
+        "i traveled",
+
+        "today i",
+        "today we"
+    ];
+
+
+    for (const signal of personalSignals) {
+
+        if (
+            combined.includes(signal)
+        ) {
+            score += 12;
+        }
+    }
+
+
+    // ---------------------------------------------------------
+    // SUPPORTING SIGNALS
+    // Alone ye vlog prove nahi karte.
+    // ---------------------------------------------------------
+
+    const supportingSignals = [
+        "today",
+        "weekend",
+        "morning",
+        "evening",
+
+        "breakfast",
+        "lunch",
+        "dinner",
+
+        "market",
+        "street",
+        "city",
+        "beach",
+        "mountain",
+
+        "hotel",
+        "hostel",
+
+        "train",
+        "flight",
+        "airport",
+
+        "festival",
+        "celebration"
+    ];
+
+
+    for (const signal of supportingSignals) {
+
+        if (
+            combined.includes(signal)
+        ) {
+            score += 5;
+        }
+    }
+
+
+    // ---------------------------------------------------------
+    // HASHTAG BONUS
+    // ---------------------------------------------------------
+
+    const usefulTags = [
+        "vlog",
+        "dailyvlog",
+        "minivlog",
+
+        "travel",
+        "travelvlog",
+        "travelphotography",
+
+        "food",
+        "foodie",
+        "streetfood",
+
+        "dailylife",
+        "dayinmylife",
+        "lifestyle",
+
+        "roadtrip",
+        "vacation",
+        "holiday",
+
+        "citylife",
+        "college",
+        "studentlife"
+    ];
+
+
+    for (const rawTag of safeTags) {
+
+        const tag =
+            String(rawTag || "")
+                .toLowerCase()
+                .replace(/^#/, "")
+                .replace(/[_\-\s]+/g, "")
+                .trim();
+
+        if (
+            usefulTags.includes(tag)
+        ) {
+            score += 8;
         }
     }
 
@@ -2072,168 +2433,255 @@ function calculateMastodonVlogScore(
     );
 }
 
-async function fetchMastodonInstance(
+const MASTODON_HASHTAGS = {
+
+    IN: [
+        "india",
+        "travelindia",
+        "indianfood",
+        "delhi",
+        "mumbai",
+        "bangalore",
+        "bengaluru",
+        "kolkata",
+        "chennai",
+        "hyderabad",
+        "kerala",
+        "goa",
+        "travel",
+        "food",
+        "streetfood",
+        "dailylife",
+        "dayinmylife",
+        "lifestyle"
+    ],
+
+    JP: [
+        "japan",
+        "tokyo",
+        "osaka",
+        "kyoto",
+        "japantravel",
+        "japanesefood",
+        "travel",
+        "food",
+        "dailylife",
+        "lifestyle"
+    ],
+
+    AE: [
+        "uae",
+        "dubai",
+        "abudhabi",
+        "dubailife",
+        "dubaitravel",
+        "travel",
+        "food",
+        "dailylife",
+        "lifestyle"
+    ],
+
+    DE: [
+        "germany",
+        "deutschland",
+        "berlin",
+        "munich",
+        "hamburg",
+        "travel",
+        "food",
+        "dailylife",
+        "lifestyle"
+    ],
+
+    BR: [
+        "brazil",
+        "brasil",
+        "saopaulo",
+        "riodejaneiro",
+        "viagem",
+        "comida",
+        "travel",
+        "food",
+        "lifestyle"
+    ],
+
+    DEFAULT: [
+        "travel",
+        "food",
+        "streetfood",
+        "dailylife",
+        "dayinmylife",
+        "lifestyle",
+        "citylife",
+        "college",
+        "vacation",
+        "roadtrip"
+    ]
+};
+
+async function fetchMastodonHashtag(
     host,
-    countryCode
+    hashtag
 ) {
+    const controller = new AbortController();
 
-    const controller =
-        new AbortController();
-
-    const timer =
+    const timeout =
         setTimeout(
             () => controller.abort(),
             MASTODON_TIMEOUT_MS
         );
 
-
     try {
+        const cleanTag =
+            String(hashtag || "")
+                .trim()
+                .replace(/^#/, "");
+
+        if (!cleanTag) {
+            return {
+                hashtag,
+                statuses: [],
+                authRequired: false
+            };
+        }
 
         const url =
-            `https://${host}/api/v1/timelines/public` +
-            `?local=false` +
-            `&only_media=true` +
-            `&limit=40`;
+            `https://${host}` +
+            `/api/v1/timelines/tag/` +
+            `${encodeURIComponent(cleanTag)}` +
+            `?only_media=true&limit=40`;
 
+        const headers = {
+            "Accept": "application/json",
+            "User-Agent": "Vlogger/1.0"
+        };
+
+        // IMPORTANT:
+        // mastodon.social ka token kisi dusre
+        // Mastodon server ko mat bhejna.
+        if (
+            host === "mastodon.social" &&
+            MASTODON_ACCESS_TOKEN
+        ) {
+            headers["Authorization"] =
+                `Bearer ${MASTODON_ACCESS_TOKEN}`;
+        }
 
         const response =
             await fetch(
                 url,
                 {
                     method: "GET",
-
-                    // headers: {
-                    //     "Accept":
-                    //         "application/json",
-
-                    //     "User-Agent":
-                    //         "Vlogger/1.0"
-                    // },
-                    headers: {
-    "Accept":
-        "application/json",
-
-    "User-Agent":
-        "Vlogger/1.0",
-
-    "Authorization":
-        `Bearer ${MASTODON_ACCESS_TOKEN}`
-},
-
-                    signal:
-                        controller.signal
+                    headers,
+                    signal: controller.signal
                 }
             );
-
-
-        const body =
-            await response.text();
-
-
-        // ================================================
-        // AUTH REQUIRED
-        // ================================================
 
         if (
             response.status === 401 ||
             response.status === 403 ||
             response.status === 422
         ) {
-
             console.log(
-                `🐘 MASTODON AUTH/SERVER RESTRICTED | host=${host} | status=${response.status}`
+                `🐘 MASTODON AUTH | host=${host}` +
+                ` | tag=${cleanTag}` +
+                ` | code=${response.status}`
             );
 
             return {
-                host,
-                status: response.status,
-                authRequired: true,
-                statuses: []
+                hashtag: cleanTag,
+                statuses: [],
+                authRequired: true
             };
         }
-
 
         if (!response.ok) {
+            const body =
+                await response
+                    .text()
+                    .catch(() => "");
 
             console.log(
-                `❌ MASTODON HTTP | host=${host} | status=${response.status} | body=${body.slice(0, 200)}`
+                `🐘 MASTODON HTTP ERROR` +
+                ` | host=${host}` +
+                ` | tag=${cleanTag}` +
+                ` | code=${response.status}` +
+                ` | body=${body.slice(0, 150)}`
             );
 
             return {
-                host,
-                status: response.status,
-                authRequired: false,
-                statuses: []
+                hashtag: cleanTag,
+                statuses: [],
+                authRequired: false
             };
         }
 
+        const data = await response.json();
 
-        let json;
-
-
-        try {
-
-            json =
-                JSON.parse(body);
-
-        } catch (error) {
-
-            console.log(
-                `❌ MASTODON JSON ERROR | host=${host}`
-            );
-
-            return {
-                host,
-                status: response.status,
-                authRequired: false,
-                statuses: []
-            };
-        }
-
-
-        if (!Array.isArray(json)) {
-
-            return {
-                host,
-                status: response.status,
-                authRequired: false,
-                statuses: []
-            };
-        }
-
+        const statuses =
+            Array.isArray(data)
+                ? data
+                : [];
 
         console.log(
-            `🐘 MASTODON OK | host=${host} | statuses=${json.length}`
+            `🐘 MASTODON TAG` +
+            ` | #${cleanTag}` +
+            ` | statuses=${statuses.length}`
         );
 
-
         return {
-            host,
-            status: response.status,
-            authRequired: false,
-            statuses: json
+            hashtag: cleanTag,
+            statuses,
+            authRequired: false
         };
-
 
     } catch (error) {
 
         console.log(
-            `❌ MASTODON FETCH FAILED | host=${host} | ${error.message}`
+            `🐘 MASTODON TAG FAILED` +
+            ` | host=${host}` +
+            ` | tag=${hashtag}` +
+            ` | error=${error.message}`
         );
 
-
         return {
-            host,
-            status: 0,
-            authRequired: false,
-            statuses: []
+            hashtag,
+            statuses: [],
+            authRequired: false
         };
 
-
     } finally {
-
-        clearTimeout(timer);
+        clearTimeout(timeout);
     }
+}
+
+function getMastodonHashtags(countryCode) {
+
+    const country =
+        String(countryCode || "GLOBAL")
+            .trim()
+            .toUpperCase();
+
+    const local =
+        MASTODON_HASHTAGS[country] || [];
+
+    const global =
+        MASTODON_HASHTAGS.DEFAULT;
+
+    // Country-specific tags ko priority.
+    // Har API request me bahut saare calls nahi karenge.
+    const localSelected =
+        local.slice(0, 5);
+
+    const globalSelected =
+        global.slice(0, 3);
+
+    return [
+        ...new Set([
+            ...localSelected,
+            ...globalSelected
+        ])
+    ];
 }
 
 function convertMastodonStatus(
@@ -2342,10 +2790,16 @@ function convertMastodonStatus(
 
     const countryScore =
         calculateMastodonCountryScore(
-            countryCode,
-            countryText,
-            language
-        );
+        country,
+        combinedText,
+        status?.language,
+        tags
+    );
+        // calculateMastodonCountryScore(
+        //     countryCode,
+        //     countryText,
+        //     language
+        // );
 
 
     const likes =
@@ -2447,219 +2901,506 @@ async function fetchMastodonVlogs(
     countryCode,
     requestedLimit
 ) {
-
     const country =
         String(countryCode || "GLOBAL")
             .trim()
             .toUpperCase();
 
-
     const limit =
-        Math.max(
-            1,
-            Math.min(
+        Math.min(
+            Math.max(
                 Number(requestedLimit) || 10,
-                30
-            )
+                1
+            ),
+            30
         );
 
+    const host =
+        "mastodon.social";
 
-    const config =
-        mastodonCountryConfig(
-            country
-        );
+    const hashtags =
+        getMastodonHashtags(country);
 
+    console.log(
+        `🐘 MASTODON START` +
+        ` | country=${country}` +
+        ` | tags=${hashtags.join(",")}`
+    );
 
-    const hosts =
-        [
-            ...new Set(
-                config.instances
-            )
-        ]
-            .slice(0, 3);
-
-
-    const results =
+    /*
+     * Sab hashtag requests parallel.
+     */
+    const responses =
         await Promise.all(
-            hosts.map(
-                host =>
-                    fetchMastodonInstance(
+            hashtags.map(
+                hashtag =>
+                    fetchMastodonHashtag(
                         host,
-                        country
+                        hashtag
                     )
             )
         );
 
-
-    const videos = [];
-
-    let statusesReceived = 0;
     let authRestrictedInstances = 0;
 
-
-    for (const result of results) {
-
-        statusesReceived +=
-            result.statuses.length;
-
-
+    for (const result of responses) {
         if (result.authRequired) {
-
             authRestrictedInstances++;
-
-            continue;
-        }
-
-
-        for (
-            const status of result.statuses
-        ) {
-
-            const video =
-                convertMastodonStatus(
-                    status,
-                    result.host,
-                    country
-                );
-
-
-            if (video) {
-
-                videos.push(video);
-            }
         }
     }
 
+    /*
+     * Sab statuses combine.
+     */
+    const allStatuses =
+        responses.flatMap(
+            result =>
+                Array.isArray(result.statuses)
+                    ? result.statuses
+                    : []
+        );
 
-    // ================================================
-    // DUPLICATE ID
-    // ================================================
+    console.log(
+        `🐘 MASTODON RAW` +
+        ` | statuses=${allStatuses.length}`
+    );
 
+    /*
+     * Same post multiple hashtags me mil sakta hai.
+     * ID se dedupe.
+     */
     const uniqueMap =
         new Map();
 
+    for (const status of allStatuses) {
 
-    for (const video of videos) {
+        if (!status?.id) {
+            continue;
+        }
 
-        if (
-            !uniqueMap.has(video.id)
-        ) {
+        /*
+         * Remote status IDs theoretically host context me
+         * local representation ho sakte hain.
+         */
+        const key =
+            status.uri ||
+            status.url ||
+            status.id;
 
+        if (!uniqueMap.has(key)) {
             uniqueMap.set(
-                video.id,
-                video
+                key,
+                status
             );
         }
     }
 
+    const uniqueStatuses =
+        [...uniqueMap.values()];
 
-    const unique =
-        Array.from(
-            uniqueMap.values()
-        );
+    console.log(
+        `🐘 MASTODON UNIQUE` +
+        ` | statuses=${uniqueStatuses.length}`
+    );
 
+    const candidates = [];
 
-    // ================================================
-    // RANK
-    // ================================================
+    let videoStatuses = 0;
+    let vlogPassed = 0;
 
-    unique.sort(
+    for (const status of uniqueStatuses) {
+
+        try {
+
+            /*
+             * Sensitive posts reject.
+             */
+            if (status?.sensitive === true) {
+                continue;
+            }
+
+            /*
+             * Bots reject.
+             */
+            if (status?.account?.bot === true) {
+                continue;
+            }
+
+            const attachments =
+                Array.isArray(
+                    status?.media_attachments
+                )
+                    ? status.media_attachments
+                    : [];
+
+            /*
+             * Mastodon attachment type must actually be video.
+             *
+             * "gifv" ko intentionally abhi include nahi kar rahe,
+             * because Vlogger me proper vlog video chahiye.
+             */
+            const video =
+                attachments.find(
+                    media =>
+                        media?.type === "video" &&
+                        (
+                            media?.url ||
+                            media?.remote_url
+                        )
+                );
+
+            if (!video) {
+                continue;
+            }
+
+            videoStatuses++;
+
+            const description =
+                stripHtml(
+                    status?.content || ""
+                );
+
+            const mediaDescription =
+                cleanText(
+                    video?.description
+                );
+
+            const tags =
+                Array.isArray(status?.tags)
+                    ? status.tags
+                        .map(tag =>
+                            cleanText(tag?.name)
+                        )
+                        .filter(Boolean)
+                    : [];
+
+            const accountNote =
+                stripHtml(
+                    status?.account?.note || ""
+                );
+
+            const combinedText =
+                [
+                    description,
+                    mediaDescription,
+                    accountNote,
+                    tags.join(" ")
+                ]
+                    .filter(Boolean)
+                    .join(" ")
+                    .trim();
+
+            /*
+             * Existing classifier use karo.
+             *
+             * Agar tumhare function ka exact naam/arguments
+             * calculateMastodonVlogScore(text) hi hai,
+             * ye directly chalega.
+             */
+            const vlogScore =
+    calculateMastodonVlogScore(
+        combinedText,
+        tags
+    );
+
+            /*
+             * High-recall threshold.
+             * Literal "vlog" required nahi.
+             */
+            if (vlogScore < 35) {
+                continue;
+            }
+
+            vlogPassed++;
+
+            const detectedLanguage =
+                normalizeMastodonLanguage(
+                    status?.language
+                );
+
+            /*
+             * Existing country scorer.
+             */
+            const countryConfidence =
+    calculateMastodonCountryScore(
+        country,
+        combinedText,
+        status?.language,
+        tags
+    );
+
+            const likes =
+                Number(
+                    status?.favourites_count || 0
+                );
+
+            const comments =
+                Number(
+                    status?.replies_count || 0
+                );
+
+            const shares =
+                Number(
+                    status?.reblogs_count || 0
+                );
+
+            /*
+             * Same basic engagement formula.
+             */
+            const engagementScore =
+                likes +
+                (comments * 2) +
+                (shares * 3);
+
+            const creatorName =
+                cleanText(
+                    status?.account?.display_name
+                ) ||
+                cleanText(
+                    status?.account?.username
+                ) ||
+                "Mastodon";
+
+            const creatorId =
+                cleanText(
+                    status?.account?.acct
+                ) ||
+                cleanText(
+                    status?.account?.id
+                );
+
+            const videoUrl =
+                cleanText(
+                    video?.url
+                ) ||
+                cleanText(
+                    video?.remote_url
+                );
+
+            if (!videoUrl) {
+                continue;
+            }
+
+            const thumbnailUrl =
+                cleanText(
+                    video?.preview_url
+                ) || null;
+
+            candidates.push({
+
+                uniqueId:
+                    `mastodon_${status.id}`,
+
+                provider:
+                    "mastodon",
+
+                videoUrl,
+
+                thumbnailUrl,
+
+                originalPostUrl:
+                    cleanText(status?.url) ||
+                    cleanText(status?.uri) ||
+                    null,
+
+                title:
+                    description
+                        .replace(/\s+/g, " ")
+                        .trim()
+                        .slice(0, 180),
+
+                description:
+                    combinedText
+                        .replace(/\s+/g, " ")
+                        .trim()
+                        .slice(0, 1000),
+
+                creatorId,
+
+                creatorName,
+
+                creatorAvatar:
+                    cleanText(
+                        status?.account?.avatar
+                    ) || null,
+
+                language:
+                    detectedLanguage,
+
+                detectedCountry:
+                    countryConfidence >= 60
+                        ? country
+                        : null,
+
+                views: 0,
+
+                likes,
+
+                comments,
+
+                shares,
+
+                publishedAt:
+                    status?.created_at
+                        ? Date.parse(
+                            status.created_at
+                        ) || 0
+                        : 0,
+
+                countryConfidence,
+
+                vlogScore,
+
+                engagementScore
+            });
+
+        } catch (error) {
+
+            console.log(
+                `🐘 MASTODON STATUS SKIP` +
+                ` | id=${status?.id || "unknown"}` +
+                ` | error=${error.message}`
+            );
+        }
+    }
+
+    /*
+     * Country relevance first,
+     * then vlog quality,
+     * then engagement,
+     * then freshness.
+     */
+    candidates.sort(
         (a, b) => {
 
             if (
-                b.countryScore !==
-                a.countryScore
+                b.countryConfidence !==
+                a.countryConfidence
             ) {
-
                 return (
-                    b.countryScore -
-                    a.countryScore
+                    b.countryConfidence -
+                    a.countryConfidence
                 );
             }
-
 
             if (
                 b.vlogScore !==
                 a.vlogScore
             ) {
-
                 return (
                     b.vlogScore -
                     a.vlogScore
                 );
             }
 
+            if (
+                b.engagementScore !==
+                    a.engagementScore
+            ) {
+                return (
+                    b.engagementScore -
+                    a.engagementScore
+                );
+            }
 
             return (
-                b.engagementScore -
-                a.engagementScore
+                b.publishedAt -
+                a.publishedAt
             );
         }
     );
 
-
-    const strong =
-        unique.filter(
+    /*
+     * Country tiers.
+     */
+    const strongCountry =
+        candidates.filter(
             item =>
-                item.countryScore >= 60
+                item.countryConfidence >= 70
         );
 
-
-    const possible =
-        unique.filter(
+    const possibleCountry =
+        candidates.filter(
             item =>
-                item.countryScore >= 35 &&
-                item.countryScore < 60
+                item.countryConfidence >= 35 &&
+                item.countryConfidence < 70
         );
 
-
-    const weak =
-        unique.filter(
+    const weakCountry =
+        candidates.filter(
             item =>
-                item.countryScore < 35
+                item.countryConfidence < 35
         );
 
-
-    // Country first, but do not return 0 just because
-    // not enough country-specific videos exist.
-
-    const selected =
+    /*
+     * Strong local first.
+     * Agar local kam mila to possible/global se fill.
+     *
+     * IMPORTANT:
+     * target complete na hone par [] nahi.
+     * Jitne mile utne return.
+     */
+    const videos =
         [
-            ...strong,
-            ...possible,
-            ...weak
+            ...strongCountry,
+            ...possibleCountry,
+            ...weakCountry
         ]
             .slice(
                 0,
                 limit
             );
 
+    console.log(
+        `🐘 MASTODON DONE` +
+        ` | country=${country}` +
+        ` | raw=${allStatuses.length}` +
+        ` | unique=${uniqueStatuses.length}` +
+        ` | videos=${videoStatuses}` +
+        ` | vlogPassed=${vlogPassed}` +
+        ` | candidates=${candidates.length}` +
+        ` | returned=${videos.length}`
+    );
 
     return {
 
-        country,
+        videos,
 
-        requested:
-            limit,
+        debug: {
+            instancesAttempted: 1,
 
-        instancesAttempted:
-            hosts.length,
+            hashtagsAttempted:
+                hashtags.length,
 
-        authRestrictedInstances,
+            hashtags:
+                hashtags,
 
-        statusesReceived,
+            authRestrictedInstances,
 
-        strongCountry:
-            strong.length,
+            statusesReceived:
+                allStatuses.length,
 
-        possibleCountry:
-            possible.length,
+            uniqueStatuses:
+                uniqueStatuses.length,
 
-        weakCountry:
-            weak.length,
+            videoStatuses,
 
-        videos:
-            selected
+            vlogPassed,
+
+            candidates:
+                candidates.length
+        },
+
+        tiers: {
+            strongCountry:
+                strongCountry.length,
+
+            possibleCountry:
+                possibleCountry.length,
+
+            weakCountry:
+                weakCountry.length
+        }
     };
 }
 
