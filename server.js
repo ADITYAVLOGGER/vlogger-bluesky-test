@@ -5599,11 +5599,8 @@ server.listen(
         );
 
         console.log(
-            `🦋 Bluesky configured=${Boolean(
-                BSKY_IDENTIFIER &&
-                BSKY_PASSWORD
-            )}`
-        );
+    "🦋 Bluesky mode=PUBLIC"
+);
 
         console.log(
             `🐘 Mastodon configured=${Boolean(
