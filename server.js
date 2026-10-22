@@ -9,14 +9,16 @@ const PORT = process.env.PORT || 3000;
 const MASTODON_ACCESS_TOKEN =
     process.env.MASTODON_ACCESS_TOKEN || "";
 
-const BSKY_IDENTIFIER =
-    process.env.BSKY_IDENTIFIER;
+// const BSKY_IDENTIFIER =
+//     process.env.BSKY_IDENTIFIER;
 
-const BSKY_PASSWORD =
-    process.env.BSKY_PASSWORD;
+// const BSKY_PASSWORD =
+//     process.env.BSKY_PASSWORD;
 
-const BSKY_PDS =
-    "https://bsky.social";
+// const BSKY_PDS =
+//     "https://bsky.social";
+const BSKY_PUBLIC_API =
+    "https://public.api.bsky.app";
 
 const MAX_OUTPUT_LIMIT = 20;
 const SEARCH_LIMIT = 50;
@@ -70,11 +72,11 @@ const MASTODON_COUNTRY_CONFIG = {
 // BLUESKY SESSION CACHE
 // ============================================================
 
-let cachedSession = null;
-let sessionCreatedAt = 0;
+// let cachedSession = null;
+// let sessionCreatedAt = 0;
 
-const SESSION_CACHE_MS =
-    45 * 60 * 1000;
+// const SESSION_CACHE_MS =
+//     45 * 60 * 1000;
 
 // ============================================================
 // BASIC HELPERS
@@ -149,226 +151,292 @@ function sleep(ms) {
 // BLUESKY LOGIN
 // ============================================================
 
-async function createSession() {
+// async function createSession() {
 
-    if (
-        !BSKY_IDENTIFIER ||
-        !BSKY_PASSWORD
-    ) {
+//     if (
+//         !BSKY_IDENTIFIER ||
+//         !BSKY_PASSWORD
+//     ) {
 
-        throw new Error(
-            "BSKY_IDENTIFIER or BSKY_PASSWORD is missing in Render Environment"
-        );
-    }
+//         throw new Error(
+//             "BSKY_IDENTIFIER or BSKY_PASSWORD is missing in Render Environment"
+//         );
+//     }
 
-    console.log(
-        "🔐 Creating Bluesky session..."
-    );
+//     console.log(
+//         "🔐 Creating Bluesky session..."
+//     );
 
-    const response =
-        await fetch(
-            `${BSKY_PDS}/xrpc/com.atproto.server.createSession`,
-            {
-                method: "POST",
+//     const response =
+//         await fetch(
+//             `${BSKY_PDS}/xrpc/com.atproto.server.createSession`,
+//             {
+//                 method: "POST",
 
-                headers: {
-                    "Content-Type":
-                        "application/json",
+//                 headers: {
+//                     "Content-Type":
+//                         "application/json",
 
-                    "Accept":
-                        "application/json",
+//                     "Accept":
+//                         "application/json",
 
-                    "User-Agent":
-                        "Vlogger/1.0"
-                },
+//                     "User-Agent":
+//                         "Vlogger/1.0"
+//                 },
 
-                body:
-                    JSON.stringify({
-                        identifier:
-                            BSKY_IDENTIFIER,
+//                 body:
+//                     JSON.stringify({
+//                         identifier:
+//                             BSKY_IDENTIFIER,
 
-                        password:
-                            BSKY_PASSWORD
-                    })
-            }
-        );
+//                         password:
+//                             BSKY_PASSWORD
+//                     })
+//             }
+//         );
 
-    const responseText =
-        await response.text();
+//     const responseText =
+//         await response.text();
 
-    console.log(
-        `🔐 Bluesky login status=${response.status}`
-    );
+//     console.log(
+//         `🔐 Bluesky login status=${response.status}`
+//     );
 
-    if (!response.ok) {
+//     if (!response.ok) {
 
-        throw new Error(
-            `Bluesky login failed: HTTP ${response.status} - ` +
-            responseText.substring(
-                0,
-                500
-            )
-        );
-    }
+//         throw new Error(
+//             `Bluesky login failed: HTTP ${response.status} - ` +
+//             responseText.substring(
+//                 0,
+//                 500
+//             )
+//         );
+//     }
 
-    let session;
+//     let session;
 
-    try {
+//     try {
 
-        session =
-            JSON.parse(
-                responseText
-            );
+//         session =
+//             JSON.parse(
+//                 responseText
+//             );
 
-    } catch {
+//     } catch {
 
-        throw new Error(
-            "Bluesky login response was not valid JSON"
-        );
-    }
+//         throw new Error(
+//             "Bluesky login response was not valid JSON"
+//         );
+//     }
 
-    if (!session.accessJwt) {
+//     if (!session.accessJwt) {
 
-        throw new Error(
-            "Bluesky login succeeded but accessJwt is missing"
-        );
-    }
+//         throw new Error(
+//             "Bluesky login succeeded but accessJwt is missing"
+//         );
+//     }
 
-    cachedSession =
-        session;
+//     cachedSession =
+//         session;
 
-    sessionCreatedAt =
-        Date.now();
+//     sessionCreatedAt =
+//         Date.now();
 
-    console.log(
-        `✅ Bluesky authenticated | handle=${session.handle}`
-    );
+//     console.log(
+//         `✅ Bluesky authenticated | handle=${session.handle}`
+//     );
 
-    return session;
-}
+//     return session;
+// }
 
 
 // ============================================================
 // GET CACHED BLUESKY SESSION
 // ============================================================
 
-async function getSession(
-    forceRefresh = false
-) {
+// async function getSession(
+//     forceRefresh = false
+// ) {
 
-    const age =
-        Date.now() -
-        sessionCreatedAt;
+//     const age =
+//         Date.now() -
+//         sessionCreatedAt;
 
-    if (
-        !forceRefresh &&
-        cachedSession &&
-        cachedSession.accessJwt &&
-        age < SESSION_CACHE_MS
-    ) {
+//     if (
+//         !forceRefresh &&
+//         cachedSession &&
+//         cachedSession.accessJwt &&
+//         age < SESSION_CACHE_MS
+//     ) {
 
-        return cachedSession;
-    }
+//         return cachedSession;
+//     }
 
-    return createSession();
-}
+//     return createSession();
+// }
 
 
 // ============================================================
 // AUTHENTICATED BLUESKY REQUEST
 // ============================================================
 
+
 async function blueskyGet(
     path,
     params = {}
 ) {
 
-    let session =
-        await getSession();
+    const searchParams =
+        new URLSearchParams();
 
-    async function execute(
-        accessJwt
+
+    for (
+        const [key, value]
+        of Object.entries(params)
     ) {
 
-        const searchParams =
-            new URLSearchParams();
-
-        for (
-            const [key, value]
-            of Object.entries(params)
+        if (
+            value !== undefined &&
+            value !== null &&
+            value !== ""
         ) {
 
-            if (
-                value !== undefined &&
-                value !== null &&
-                value !== ""
-            ) {
+            searchParams.set(
+                key,
+                String(value)
+            );
+        }
+    }
 
-                searchParams.set(
-                    key,
-                    String(value)
-                );
+
+    const query =
+        searchParams.toString();
+
+
+    const url =
+        `${BSKY_PUBLIC_API}/xrpc/${path}` +
+        (
+            query
+                ? `?${query}`
+                : ""
+        );
+
+
+    console.log(
+        `🌐 BLUESKY PUBLIC REQUEST` +
+        ` | path=${path}`
+    );
+
+
+    return fetch(
+        url,
+        {
+            method: "GET",
+
+            headers: {
+
+                "Accept":
+                    "application/json",
+
+                "User-Agent":
+                    "Vlogger/1.0"
             }
         }
-
-        const query =
-            searchParams.toString();
-
-        const url =
-            `${BSKY_PDS}/xrpc/${path}` +
-            (
-                query
-                    ? `?${query}`
-                    : ""
-            );
-
-        return fetch(
-            url,
-            {
-                method: "GET",
-
-                headers: {
-
-                    "Authorization":
-                        `Bearer ${accessJwt}`,
-
-                    "Accept":
-                        "application/json",
-
-                    "User-Agent":
-                        "Vlogger/1.0"
-                }
-            }
-        );
-    }
-
-    let response =
-        await execute(
-            session.accessJwt
-        );
-
-    // Access token expired/invalid:
-    // create a fresh session and retry once.
-    if (
-        response.status === 401 ||
-        response.status === 403
-    ) {
-
-        console.log(
-            `♻️ Bluesky auth retry | status=${response.status}`
-        );
-
-        session =
-            await getSession(true);
-
-        response =
-            await execute(
-                session.accessJwt
-            );
-    }
-
-    return response;
+    );
 }
+
+
+// async function blueskyGet(
+//     path,
+//     params = {}
+// ) {
+
+//     let session =
+//         await getSession();
+
+//     async function execute(
+//         accessJwt
+//     ) {
+
+//         const searchParams =
+//             new URLSearchParams();
+
+//         for (
+//             const [key, value]
+//             of Object.entries(params)
+//         ) {
+
+//             if (
+//                 value !== undefined &&
+//                 value !== null &&
+//                 value !== ""
+//             ) {
+
+//                 searchParams.set(
+//                     key,
+//                     String(value)
+//                 );
+//             }
+//         }
+
+//         const query =
+//             searchParams.toString();
+
+//         const url =
+//             `${BSKY_PDS}/xrpc/${path}` +
+//             (
+//                 query
+//                     ? `?${query}`
+//                     : ""
+//             );
+
+//         return fetch(
+//             url,
+//             {
+//                 method: "GET",
+
+//                 headers: {
+
+//                     "Authorization":
+//                         `Bearer ${accessJwt}`,
+
+//                     "Accept":
+//                         "application/json",
+
+//                     "User-Agent":
+//                         "Vlogger/1.0"
+//                 }
+//             }
+//         );
+//     }
+
+//     let response =
+//         await execute(
+//             session.accessJwt
+//         );
+
+//     // Access token expired/invalid:
+//     // create a fresh session and retry once.
+//     if (
+//         response.status === 401 ||
+//         response.status === 403
+//     ) {
+
+//         console.log(
+//             `♻️ Bluesky auth retry | status=${response.status}`
+//         );
+
+//         session =
+//             await getSession(true);
+
+//         response =
+//             await execute(
+//                 session.accessJwt
+//             );
+//     }
+
+//     return response;
+// }
 
 
 function encodeBlueskyCursor(cursorMap) {
@@ -5041,28 +5109,24 @@ const server =
                         res,
                         200,
                         {
+    status:
+        "ok",
 
-                            status:
-                                "ok",
+    service:
+        "vlogger-social-api",
 
-                            service:
-                                "vlogger-social-api",
+    blueskyMode:
+        "public",
 
-                            blueskyConfigured:
-                                Boolean(
-                                    BSKY_IDENTIFIER &&
-                                    BSKY_PASSWORD
-                                ),
+    mastodonConfigured:
+        Boolean(
+            MASTODON_ACCESS_TOKEN
+        ),
 
-                            mastodonConfigured:
-                                Boolean(
-                                    MASTODON_ACCESS_TOKEN
-                                ),
-
-                            timestamp:
-                                new Date()
-                                    .toISOString()
-                        }
+    timestamp:
+        new Date()
+            .toISOString()
+}
                     );
 
                     return;
