@@ -2226,33 +2226,34 @@ function calculateMastodonCountryScore(
 // MASTODON COMMERCIAL / PROMOTIONAL DETECTION
 // ============================================================
 
-function getMastodonCommercialScore(
-    text
-) {
+function getMastodonCommercialScore(text = "") {
 
-    const combined =
-        String(
-            text || ""
-        )
-            .toLowerCase();
+    const value = String(text || "")
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .trim();
 
+    if (!value) {
+        return 0;
+    }
 
     let score = 0;
 
+    // ====================================================
+    // VERY STRONG COMMERCIAL INTENT
+    // ====================================================
 
-    // ========================================================
-    // VERY STRONG COMMERCIAL SIGNALS
-    // ========================================================
-
-    const veryStrong = [
+    const veryStrongSignals = [
 
         "book now",
         "book today",
         "book your",
+
         "booking now",
 
         "contact us",
         "contact now",
+        "contact our team",
 
         "call us",
         "call now",
@@ -2271,48 +2272,39 @@ function getMastodonCommercialScore(
 
         "buy now",
         "order now",
-
         "shop now",
 
         "available for booking",
+        "reserve now",
 
-        "reserve now"
+        "request a demo",
+        "book a demo",
+
+        "get started today",
+
+        "free consultation"
     ];
 
+    for (const signal of veryStrongSignals) {
 
-    for (
-        const signal
-        of veryStrong
-    ) {
-
-        if (
-            combined.includes(signal)
-        ) {
+        if (value.includes(signal)) {
             score += 3;
         }
     }
 
-
-    // ========================================================
+    // ====================================================
     // BUSINESS / SERVICE SIGNALS
-    // ========================================================
+    // ====================================================
 
     const businessSignals = [
 
         "car rental",
-        "car rentals",
-
         "rent a car",
-        "rental car",
-
         "chauffeur",
-        "chauffeur service",
 
         "airport transfer",
-        "airport transfers",
 
         "taxi service",
-
         "cab service",
 
         "tour package",
@@ -2333,100 +2325,94 @@ function getMastodonCommercialScore(
         "corporate travel",
 
         "our services",
-
         "our service",
 
         "our customers",
-
         "our clients",
 
         "customer service",
 
-        "delivery available",
+        "delivery service",
 
-        "home delivery"
+        "our company",
+        "our business",
+        "our team",
+        "our office",
+        "our employees",
+
+        "our product",
+        "our products",
+        "our brand",
+
+        "our solution",
+        "our solutions",
+
+        "our platform",
+
+        "visit our website",
+
+        "sign up",
+
+        "download now"
     ];
 
+    for (const signal of businessSignals) {
 
-    for (
-        const signal
-        of businessSignals
-    ) {
-
-        if (
-            combined.includes(signal)
-        ) {
+        if (value.includes(signal)) {
             score += 2;
         }
     }
 
+    // ====================================================
+    // CONTACT / SALES INFORMATION
+    // ====================================================
 
-    // ========================================================
-    // CONTACT INFORMATION
-    // ========================================================
+    const contactSignals = [
 
+        "contact:",
+        "contact -",
+
+        "phone:",
+        "phone -",
+
+        "call:",
+        "call -",
+
+        "whatsapp:",
+        "whatsapp -",
+
+        "email:",
+        "email -"
+    ];
+
+    for (const signal of contactSignals) {
+
+        if (value.includes(signal)) {
+            score += 2;
+        }
+    }
+
+    // Email address
     if (
-        /\b(phone|mobile|call|whatsapp)\s*[:\-]/i
-            .test(combined)
+        /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(value)
     ) {
         score += 2;
     }
 
-
+    // Phone / WhatsApp-like number
     if (
-        /\bemail\s*[:\-]/i
-            .test(combined)
+        /(?:\+?\d[\d\s().-]{7,}\d)/.test(value)
     ) {
         score += 2;
     }
 
-
+    // Website link is only weak evidence.
+    // A genuine creator may also have a link.
     if (
-        /\bwebsite\s*[:\-]/i
-            .test(combined)
-    ) {
-        score += 2;
-    }
-
-
-    /*
-     * Email address itself.
-     */
-
-    if (
-        /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i
-            .test(combined)
-    ) {
-        score += 2;
-    }
-
-
-    /*
-     * International/Indian-style phone number.
-     *
-     * Intentionally require enough digits so
-     * normal years/numbers don't trigger it.
-     */
-
-    if (
-        /(?:\+?\d[\d\s().-]{7,}\d)/
-            .test(combined)
-    ) {
-        score += 2;
-    }
-
-
-    /*
-     * Explicit website.
-     */
-
-    if (
-        /https?:\/\/|www\./i
-            .test(combined)
+        /https?:\/\/|www\./i.test(value)
     ) {
         score += 1;
     }
-
 
     return score;
 }
@@ -2436,108 +2422,160 @@ function getMastodonCommercialScore(
 // MASTODON HARD NON-VLOG DETECTION
 // ============================================================
 
-function containsMastodonHardBlock(
-    text
-) {
+function containsMastodonHardBlock(text = "") {
 
-    const combined =
-        String(
-            text || ""
-        )
-            .toLowerCase();
+    const value = String(text || "")
+        .toLowerCase()
+        .replace(/[_#-]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
 
+    if (!value) {
+        return false;
+    }
 
     const hardBlocks = [
 
-        // ----------------------------------------------------
+        // ====================================================
         // GAMING
-        // ----------------------------------------------------
+        // ====================================================
 
         "gameplay",
-        "walkthrough",
         "gaming stream",
-        "game stream",
+        "gaming highlights",
+        "walkthrough",
+        "playthrough",
+        "speedrun",
         "let's play",
         "lets play",
 
+        // ====================================================
+        // TUTORIAL / EDUCATIONAL INSTRUCTION
+        // ====================================================
 
-        // ----------------------------------------------------
-        // TUTORIAL / EDUCATION
-        // ----------------------------------------------------
-
-        "step by step tutorial",
-        "video tutorial",
-        "full tutorial",
-
+        "how to",
+        "tutorial",
+        "step by step",
+        "course lesson",
         "online course",
-        "full course",
+        "coding tutorial",
+        "programming tutorial",
 
-        "lecture",
-        "webinar",
+        // ====================================================
+        // REVIEWS / UNBOXING
+        // ====================================================
 
-
-        // ----------------------------------------------------
-        // PODCAST
-        // ----------------------------------------------------
-
-        "podcast",
-        "full podcast",
-
-
-        // ----------------------------------------------------
-        // MOVIES / TV
-        // ----------------------------------------------------
-
-        "movie trailer",
-        "official trailer",
-        "full movie",
-        "full episode",
-        "episode trailer",
-
-
-        // ----------------------------------------------------
-        // MUSIC
-        // ----------------------------------------------------
-
-        "official music video",
-        "official audio",
-        "full album",
-        "lyrics video",
-
-
-        // ----------------------------------------------------
-        // PRODUCT CONTENT
-        // ----------------------------------------------------
-
-        "unboxing",
         "product review",
         "tech review",
+        "phone review",
+        "car review",
+        "food review",
+        "restaurant review",
+        "unboxing",
+        "hands on review",
 
-
-        // ----------------------------------------------------
-        // NEWS
-        // ----------------------------------------------------
+        // ====================================================
+        // NEWS / POLITICS
+        // ====================================================
 
         "breaking news",
         "news update",
         "news report",
+        "daily news",
+        "political news",
+        "politics",
+        "political",
+        "election coverage",
+        "journalism",
 
+        // ====================================================
+        // PODCAST / INTERVIEW
+        // ====================================================
 
-        // ----------------------------------------------------
-        // SCREEN CONTENT
-        // ----------------------------------------------------
+        "full podcast",
+        "podcast episode",
+        "podcast clip",
+        "full interview",
+
+        // ====================================================
+        // MOVIE / TV / ENTERTAINMENT CLIPS
+        // ====================================================
+
+        "official trailer",
+        "movie trailer",
+        "film trailer",
+        "movie clip",
+        "film clip",
+        "tv clip",
+        "full episode",
+        "episode trailer",
+
+        // ====================================================
+        // MUSIC CONTENT
+        //
+        // IMPORTANT:
+        // Do NOT block generic "music", "artist", "studio".
+        // Creator-life / studio vlogs should still pass.
+        // ====================================================
+
+        "official music video",
+        "official audio",
+        "official lyric video",
+        "lyric video",
+        "lyrics video",
+        "full song",
+        "full album",
+        "new single out now",
+        "stream my song",
+        "listen to my song",
+        "listen now on spotify",
+        "available on spotify",
+        "spotify link",
+
+        // ====================================================
+        // COMPILATIONS / RANDOM CLIPS
+        // ====================================================
+
+        "best moments compilation",
+        "funny compilation",
+        "clip compilation",
+        "highlights compilation",
+
+        // ====================================================
+        // SCREEN RECORDINGS / SOFTWARE DEMOS
+        // ====================================================
 
         "screen recording",
         "software demo",
-        "app demo"
+        "app demo",
+
+        // ====================================================
+        // EXTERNAL VIDEO PROMOTION
+        // ====================================================
+
+        "subscribe to youtube",
+        "subscribe on youtube",
+        "subscribe to my youtube",
+        "full video on youtube",
+        "watch full video on youtube",
+        "watch on youtube",
+
+        // ====================================================
+        // COMPANY / RECRUITMENT PROMOTION
+        // ====================================================
+
+        "join our team",
+        "join our company",
+        "apply now",
+        "we are hiring",
+        "now hiring",
+        "career opportunity",
+        "job opening",
+        "become part of our team"
     ];
 
-
     return hardBlocks.some(
-        signal =>
-            combined.includes(
-                signal
-            )
+        phrase => value.includes(phrase)
     );
 }
 
@@ -2547,73 +2585,49 @@ function containsMastodonHardBlock(
 // ============================================================
 
 function calculateMastodonVlogScore(
-    text,
+    text = "",
     tags = []
 ) {
 
-    const safeTags =
-        Array.isArray(tags)
-            ? tags
-            : [];
+    const rawText =
+        String(text || "")
+            .toLowerCase();
 
-
-    const rawCombined =
-        (
-            String(
-                text || ""
-            ) +
-            " " +
-            safeTags.join(" ")
-        )
-            .toLowerCase()
-            .replace(
-                /[_#-]+/g,
-                " "
-            )
-            .replace(
-                /\s+/g,
-                " "
-            )
+    const value =
+        rawText
+            .replace(/[_#-]+/g, " ")
+            .replace(/\s+/g, " ")
             .trim();
 
+    const safeTags =
+        Array.isArray(tags)
+            ? tags.map(tag =>
+                String(tag || "")
+                    .toLowerCase()
+                    .replace(/[_#\s-]+/g, "")
+              )
+            : [];
 
-    if (!rawCombined) {
-        return 0;
-    }
-
-
-    // ========================================================
-    // HARD NON-VLOG BLOCK
-    // ========================================================
+    // ====================================================
+    // HARD BLOCK
+    // ====================================================
 
     if (
         containsMastodonHardBlock(
-            rawCombined
+            `${value} ${safeTags.join(" ")}`
         )
     ) {
         return 0;
     }
 
-
-    // ========================================================
-    // COMMERCIAL DETECTION
-    // ========================================================
+    // ====================================================
+    // COMMERCIAL
+    // ====================================================
 
     const commercialScore =
         getMastodonCommercialScore(
-            rawCombined
+            value
         );
-
-
-    /*
-     * Multiple commercial signals:
-     *
-     * Phone + email + website + service,
-     * book now + company etc.
-     *
-     * Ye Vlogger feed ke liye promotional
-     * content hai, personal vlog nahi.
-     */
 
     if (
         commercialScore >= 4
@@ -2621,23 +2635,11 @@ function calculateMastodonVlogScore(
         return 0;
     }
 
-
-    /*
-     * IMPORTANT:
-     *
-     * Old classifier base=20 se start karta tha.
-     * Isliye generic travel/food post bhi easily
-     * threshold cross kar raha tha.
-     *
-     * Ab score ZERO se start hoga.
-     */
-
     let score = 0;
 
-
-    // ========================================================
+    // ====================================================
     // VERY STRONG VLOG SIGNALS
-    // ========================================================
+    // ====================================================
 
     const veryStrongSignals = [
 
@@ -2646,12 +2648,10 @@ function calculateMastodonVlogScore(
 
         "travel vlog",
         "food vlog",
-
         "family vlog",
 
         "college vlog",
         "student vlog",
-
         "lifestyle vlog",
 
         "day in my life",
@@ -2677,55 +2677,55 @@ function calculateMastodonVlogScore(
         "living in ",
 
         "come with me",
+        "come along with me",
+
         "spend the day with me",
+        "day with me",
+        "a day with me",
+        "chill day with me",
+
+        "join me for the day",
+        "follow me for the day",
 
         "weekend in my life"
     ];
 
-
     const veryStrongHits =
         countSignals(
-            rawCombined,
+            value,
             veryStrongSignals
         );
-
 
     score +=
         veryStrongHits * 30;
 
-
-    // ========================================================
-    // EXPLICIT VLOG SIGNAL
-    // ========================================================
+    // ====================================================
+    // EXPLICIT VLOG
+    // ====================================================
 
     const explicitVlogSignals = [
         "vlog",
         "vlogging"
     ];
 
-
     const explicitVlogHits =
         countSignals(
-            rawCombined,
+            value,
             explicitVlogSignals
         );
-
 
     score +=
         explicitVlogHits * 25;
 
-
-    // ========================================================
-    // PERSONAL FIRST-PERSON SIGNALS
-    // ========================================================
+    // ====================================================
+    // PERSONAL EXPERIENCE
+    // ====================================================
 
     const personalSignals = [
 
         "my life",
-
         "my morning",
         "my evening",
-
         "my weekend",
 
         "my vacation",
@@ -2762,25 +2762,21 @@ function calculateMastodonVlogScore(
 
         "i'm visiting",
         "im visiting",
-
         "i am visiting"
     ];
 
-
     const personalHits =
         countSignals(
-            rawCombined,
+            value,
             personalSignals
         );
-
 
     score +=
         personalHits * 18;
 
-
-    // ========================================================
-    // EXPERIENCE / ACTIVITY SIGNALS
-    // ========================================================
+    // ====================================================
+    // LIFESTYLE / EXPERIENCE
+    // ====================================================
 
     const experienceSignals = [
 
@@ -2812,25 +2808,20 @@ function calculateMastodonVlogScore(
         "weekend trip"
     ];
 
-
     const experienceHits =
         countSignals(
-            rawCombined,
+            value,
             experienceSignals
         );
-
 
     score +=
         experienceHits * 15;
 
-
-    // ========================================================
+    // ====================================================
     // GENERIC LIFESTYLE SIGNALS
     //
-    // IMPORTANT:
-    // Inko low weight diya hai.
-    // "travel" alone vlog prove nahi karta.
-    // ========================================================
+    // These alone must NOT make something a vlog.
+    // ====================================================
 
     const genericSignals = [
 
@@ -2842,10 +2833,8 @@ function calculateMastodonVlogScore(
         "traveling",
 
         "trip",
-
         "vacation",
         "holiday",
-
         "journey",
 
         "weekend",
@@ -2855,9 +2844,7 @@ function calculateMastodonVlogScore(
         "family",
 
         "restaurant",
-
         "cafe",
-        "café",
 
         "breakfast",
         "lunch",
@@ -2868,7 +2855,6 @@ function calculateMastodonVlogScore(
         "city",
 
         "beach",
-
         "mountain",
 
         "hotel",
@@ -2882,20 +2868,11 @@ function calculateMastodonVlogScore(
         "celebration"
     ];
 
-
     const genericHits =
         countSignals(
-            rawCombined,
+            value,
             genericSignals
         );
-
-
-    /*
-     * Generic words ka contribution capped.
-     *
-     * 10 generic words likhne se promotional
-     * post automatic vlog nahi banega.
-     */
 
     score +=
         Math.min(
@@ -2903,80 +2880,83 @@ function calculateMastodonVlogScore(
             12
         );
 
+    // ====================================================
+    // VLOG HASHTAGS
+    // ====================================================
 
-    // ========================================================
-    // HASHTAG SIGNALS
-    // ========================================================
+    const strongTags = new Set([
 
-    let strongTagHits = 0;
-    let weakTagHits = 0;
-
-
-    const strongVlogTags = [
         "vlog",
+        "vlogging",
+
         "dailyvlog",
         "minivlog",
+
         "travelvlog",
         "foodvlog",
+        "familyvlog",
+
+        "collegevlog",
+        "studentvlog",
+
+        "lifestylevlog",
+
         "dayinmylife",
         "weekinmylife"
-    ];
+    ]);
 
+    const weakTags = new Set([
 
-    const weakLifestyleTags = [
         "dailylife",
+        "everydaylife",
+
         "lifestyle",
+
         "roadtrip",
+
         "vacation",
         "holiday",
+
         "citylife",
-        "studentlife"
-    ];
 
+        "studentlife",
+        "collegelife"
+    ]);
 
-    for (
-        const rawTag
-        of safeTags
+    const strongTagHits =
+        safeTags.filter(
+            tag => strongTags.has(tag)
+        ).length;
+
+    const weakTagHits =
+        safeTags.filter(
+            tag => weakTags.has(tag)
+        ).length;
+
+    // ----------------------------------------------------
+    // IMPORTANT:
+    // Hashtag alone should not automatically prove
+    // that random content is a vlog.
+    // ----------------------------------------------------
+
+    const textEvidence =
+        veryStrongHits +
+        explicitVlogHits +
+        personalHits +
+        experienceHits;
+
+    if (
+        textEvidence > 0
     ) {
 
-        const tag =
-            String(
-                rawTag || ""
-            )
-                .toLowerCase()
-                .replace(
-                    /^#/,
-                    ""
-                )
-                .replace(
-                    /[_\-\s]+/g,
-                    ""
-                )
-                .trim();
+        score +=
+            strongTagHits * 18;
 
+    } else {
 
-        if (
-            strongVlogTags.includes(
-                tag
-            )
-        ) {
-            strongTagHits++;
-        }
-
-
-        if (
-            weakLifestyleTags.includes(
-                tag
-            )
-        ) {
-            weakTagHits++;
-        }
+        score +=
+            strongTagHits * 6;
     }
-
-
-    score +=
-        strongTagHits * 18;
-
 
     score +=
         Math.min(
@@ -2984,65 +2964,43 @@ function calculateMastodonVlogScore(
             12
         );
 
-
-    // ========================================================
-    // PROMOTIONAL PENALTY
-    // ========================================================
-
-    /*
-     * commercialScore 1-3:
-     * Hard block nahi, but ranking penalty.
-     *
-     * Example:
-     * genuine travel creator ne ek website
-     * mention kar di ho to usko instantly
-     * reject nahi karenge.
-     */
+    // ====================================================
+    // COMMERCIAL PENALTY
+    // ====================================================
 
     score -=
         commercialScore * 12;
 
-
-    // ========================================================
-    // REQUIRE SOME REAL VLOG EVIDENCE
-    // ========================================================
-
-    const strongEvidence =
-        veryStrongHits +
-        explicitVlogHits +
-        personalHits +
-        experienceHits +
-        strongTagHits;
-
-
-    /*
-     * Sirf:
-     *
-     * travel + food + city + India
-     *
-     * likhne se vlog qualify nahi karega.
-     */
+    // ====================================================
+    // IMPORTANT QUALITY GATE
+    //
+    // Generic words + hashtags alone cannot create
+    // a high-confidence vlog.
+    // ====================================================
 
     if (
-        strongEvidence === 0
+        textEvidence === 0
     ) {
 
-        return Math.min(
-            Math.max(
+        return Math.max(
+            0,
+            Math.min(
                 score,
-                0
-            ),
-            25
+                25
+            )
         );
     }
 
+    // ====================================================
+    // FINAL
+    // ====================================================
 
-    return Math.min(
-        Math.max(
-            score,
-            0
-        ),
-        100
+    return Math.max(
+        0,
+        Math.min(
+            Math.round(score),
+            100
+        )
     );
 }
 
@@ -3053,59 +3011,28 @@ function calculateMastodonVlogScore(
 
 const MASTODON_HASHTAGS = {
 
-    // IN: [
+   IN: [
 
-    //     "india",
-
-    //     "travelindia",
-
-    //     "indianfood",
-
-    //     "delhi",
-
-    //     "mumbai",
-
-    //     "bangalore",
-
-    //     "bengaluru",
-
-    //     "kolkata",
-
-    //     "chennai",
-
-    //     "hyderabad",
-
-    //     "kerala",
-
-    //     "goa",
-
-    //     "travel",
-
-    //     "food",
-
-    //     "streetfood",
-
-    //     "dailylife",
-
-    //     "dayinmylife",
-
-    //     "lifestyle"
-    // ],
-
-    IN: [
+    "indiavlog",
+    "indianvlogger",
+    "travelindia",
     "india",
+    "indianfood",
+
     "dayinmylife",
     "dailylife",
+
     "travelvlog",
     "foodvlog",
+
     "lifestyle",
-    "travelindia",
-    "streetfood",
-    "college",
-    "roadtrip",
+
     "delhi",
     "mumbai",
+
     "bangalore",
+    "bengaluru",
+
     "kerala",
     "goa"
 ],
@@ -3201,36 +3128,19 @@ const MASTODON_HASHTAGS = {
     ],
 
 
-    // DEFAULT: [
+  DEFAULT: [
 
-    //     "travel",
-
-    //     "food",
-
-    //     "streetfood",
-
-    //     "dailylife",
-
-    //     "dayinmylife",
-
-    //     "lifestyle",
-
-    //     "citylife",
-
-    //     "college",
-
-    //     "vacation",
-
-    //     "roadtrip"
-    // ]
-    DEFAULT: [
     "dayinmylife",
     "dailylife",
+
     "travelvlog",
     "foodvlog",
+
     "lifestyle",
+
     "roadtrip",
     "citylife",
+
     "travel"
 ]
 };
@@ -3240,56 +3150,43 @@ const MASTODON_HASHTAGS = {
 // SELECT MASTODON HASHTAGS
 // ============================================================
 
-function getMastodonHashtags(
-    countryCode
-) {
+function getMastodonHashtags(countryCode) {
 
     const country =
         String(
-            countryCode ||
-            "GLOBAL"
+            countryCode || "GLOBAL"
         )
             .trim()
             .toUpperCase();
 
-
     const local =
-        MASTODON_HASHTAGS[
-            country
-        ] || [];
-
+        MASTODON_HASHTAGS[country] || [];
 
     const global =
-        MASTODON_HASHTAGS.DEFAULT;
-
+        MASTODON_HASHTAGS.DEFAULT || [];
 
     /*
-     * Keep requests reasonable.
+     * Country-specific discovery first.
      *
-     * Country-specific tags first,
-     * then generic discovery.
+     * Global vlog hashtags are included so that
+     * local inventory kam hone par genuine global
+     * vlog content bhi mil sake.
+     *
+     * Duplicate hashtags remove honge.
+     * Maximum 8 requests hi jayengi.
      */
 
-    const localSelected =
-        local.slice(
-            0,
-            5
-        );
-
-
-    const globalSelected =
-        global.slice(
-            0,
-            3
-        );
-
+    const combined = [
+        ...local.slice(0, 5),
+        ...global.slice(0, 5)
+    ];
 
     return [
-        ...new Set([
-            ...localSelected,
-            ...globalSelected
-        ])
-    ];
+        ...new Set(combined)
+    ].slice(
+        0,
+        8
+    );
 }
 
 
@@ -3631,9 +3528,10 @@ async function fetchMastodonVlogs(
     /*
      * Currently discovery mastodon.social par.
      *
-     * Baad me country-specific instances add kar
-     * sakte hain, but token kabhi dusre host ko
-     * forward nahi karna.
+     * Future me country-specific instances add kar sakte hain.
+     * IMPORTANT:
+     * Mastodon token kabhi unknown/dusre host ko forward
+     * nahi karna.
      */
 
     const host =
@@ -3729,8 +3627,7 @@ async function fetchMastodonVlogs(
 
 
         /*
-         * Same post multiple hashtags me
-         * aa sakta hai.
+         * Same post multiple hashtags me aa sakta hai.
          */
 
         const key =
@@ -3806,7 +3703,7 @@ async function fetchMastodonVlogs(
         try {
 
             // =================================================
-            // SENSITIVE
+            // SENSITIVE CONTENT
             // =================================================
 
             if (
@@ -3821,7 +3718,7 @@ async function fetchMastodonVlogs(
 
 
             // =================================================
-            // BOT
+            // BOT ACCOUNT
             // =================================================
 
             if (
@@ -3886,7 +3783,7 @@ async function fetchMastodonVlogs(
 
 
             // =================================================
-            // TEXT
+            // POST TEXT
             // =================================================
 
             const description =
@@ -3925,17 +3822,13 @@ async function fetchMastodonVlogs(
 
 
             /*
-             * IMPORTANT:
+             * postText:
              *
-             * Vlog classification me account bio
-             * ko full strength se use nahi karenge.
+             * Actual post ko vlog classify karne ke liye.
              *
-             * Business account ka bio:
-             *
-             * "travel agency / contact us..."
-             *
-             * useful commercial signal hai,
-             * but post content bhi preserve karna hai.
+             * Account bio intentionally yahan include nahi hai,
+             * kyunki creator ke bio ki wajah se genuine vlog ka
+             * score distort nahi hona chahiye.
              */
 
             const postText =
@@ -3953,7 +3846,21 @@ async function fetchMastodonVlogs(
                     .trim();
 
 
-            const commercialText =
+            /*
+             * moderationText:
+             *
+             * Hard-block + commercial detection ke liye
+             * account bio bhi include karenge.
+             *
+             * Example:
+             * post innocent ho sakta hai lekin account bio:
+             *
+             * "Car Rental | Book Now | WhatsApp..."
+             *
+             * ho sakta hai.
+             */
+
+            const moderationText =
                 [
                     description,
                     mediaDescription,
@@ -3970,41 +3877,49 @@ async function fetchMastodonVlogs(
 
 
             // =================================================
-            // HARD NON-VLOG
+            // HARD NON-VLOG / UNWANTED CONTENT
             // =================================================
 
             if (
                 containsMastodonHardBlock(
-                    postText
+                    moderationText
                 )
             ) {
 
                 hardBlocked++;
+
+
+                console.log(
+                    `🚫 MASTODON HARD BLOCK` +
+                    ` | id=${status?.id || "unknown"}` +
+                    ` | creator=${cleanText(status?.account?.display_name)}` +
+                    ` | tags=${tags.join(",")}` +
+                    ` | text=${description.substring(0, 200)}`
+                );
+
 
                 continue;
             }
 
 
             // =================================================
-            // COMMERCIAL FILTER
+            // COMMERCIAL / BUSINESS PROMOTION FILTER
             // =================================================
 
             const commercialScore =
                 getMastodonCommercialScore(
-                    commercialText
+                    moderationText
                 );
 
 
             /*
-             * Aaru Mobility type examples:
+             * IMPORTANT:
              *
-             * Phone
-             * Email
-             * Website
-             * car rental/service
+             * >= 4 = strong commercial/business evidence.
              *
-             * commercialScore easily >=4,
-             * therefore reject.
+             * Threshold ko bahut low nahi rakhenge,
+             * because genuine creators ke bio me bhi
+             * website/contact information ho sakti hai.
              */
 
             if (
@@ -4016,10 +3931,11 @@ async function fetchMastodonVlogs(
 
                 console.log(
                     `🚫 MASTODON COMMERCIAL BLOCK` +
-                    ` | id=${status?.id}` +
+                    ` | id=${status?.id || "unknown"}` +
                     ` | score=${commercialScore}` +
                     ` | creator=${cleanText(status?.account?.display_name)}` +
-                    ` | text=${description.substring(0, 100)}`
+                    ` | tags=${tags.join(",")}` +
+                    ` | text=${description.substring(0, 200)}`
                 );
 
 
@@ -4039,38 +3955,31 @@ async function fetchMastodonVlogs(
 
 
             /*
-             * Stronger threshold.
+             * Generic travel/food/random video ko sirf broad
+             * hashtag ki wajah se accept nahi karenge.
              *
-             * Generic food/travel post should
-             * not qualify only because it has
-             * broad lifestyle words.
+             * Genuine vlog evidence hona chahiye.
              */
 
-            // if (
-            //     vlogScore < 40
-            // ) {
-
-            //     lowVlogScore++;
-
-            //     continue;
-            // }
             if (
-    vlogScore < 40
-) {
+                vlogScore < 40
+            ) {
 
-    lowVlogScore++;
+                lowVlogScore++;
 
-    console.log(
-        `📉 MASTODON LOW VLOG` +
-        ` | id=${status?.id || "unknown"}` +
-        ` | score=${vlogScore}` +
-        ` | creator=${cleanText(status?.account?.display_name)}` +
-        ` | tags=${tags.join(",")}` +
-        ` | text=${postText.substring(0, 300)}`
-    );
 
-    continue;
-}
+                console.log(
+                    `📉 MASTODON LOW VLOG` +
+                    ` | id=${status?.id || "unknown"}` +
+                    ` | score=${vlogScore}` +
+                    ` | creator=${cleanText(status?.account?.display_name)}` +
+                    ` | tags=${tags.join(",")}` +
+                    ` | text=${postText.substring(0, 300)}`
+                );
+
+
+                continue;
+            }
 
 
             vlogPassed++;
@@ -4089,6 +3998,14 @@ async function fetchMastodonVlogs(
             // =================================================
             // COUNTRY SCORE
             // =================================================
+
+            /*
+             * Country HARD FILTER nahi hai.
+             *
+             * Local content ko ranking preference milegi.
+             * Local inventory kam hui to genuine global
+             * vlogs fallback me aa sakte hain.
+             */
 
             const countryConfidence =
                 calculateMastodonCountryScore(
@@ -4201,6 +4118,20 @@ async function fetchMastodonVlogs(
 
 
             // =================================================
+            // ORIGINAL POST URL
+            // =================================================
+
+            const originalPostUrl =
+                cleanText(
+                    status?.url
+                ) ||
+                cleanText(
+                    status?.uri
+                ) ||
+                null;
+
+
+            // =================================================
             // CANDIDATE
             // =================================================
 
@@ -4212,19 +4143,21 @@ async function fetchMastodonVlogs(
                 provider:
                     "mastodon",
 
+
+                // ---------------------------------------------
+                // Original remote media
+                // ---------------------------------------------
+
                 videoUrl,
 
                 thumbnailUrl,
 
-                originalPostUrl:
-                    cleanText(
-                        status?.url
-                    ) ||
-                    cleanText(
-                        status?.uri
-                    ) ||
-                    null,
+                originalPostUrl,
 
+
+                // ---------------------------------------------
+                // Content
+                // ---------------------------------------------
 
                 title:
                     description
@@ -4252,6 +4185,10 @@ async function fetchMastodonVlogs(
                         ),
 
 
+                // ---------------------------------------------
+                // Creator attribution
+                // ---------------------------------------------
+
                 creatorId,
 
                 creatorName,
@@ -4264,6 +4201,10 @@ async function fetchMastodonVlogs(
                     null,
 
 
+                // ---------------------------------------------
+                // Language / Country
+                // ---------------------------------------------
+
                 language:
                     detectedLanguage,
 
@@ -4274,9 +4215,12 @@ async function fetchMastodonVlogs(
                         : null,
 
 
+                // ---------------------------------------------
+                // Engagement
+                // ---------------------------------------------
+
                 views:
                     0,
-
 
                 likes,
 
@@ -4284,6 +4228,10 @@ async function fetchMastodonVlogs(
 
                 shares,
 
+
+                // ---------------------------------------------
+                // Date
+                // ---------------------------------------------
 
                 publishedAt:
                     status?.created_at
@@ -4295,8 +4243,11 @@ async function fetchMastodonVlogs(
                         : 0,
 
 
-                countryConfidence:
+                // ---------------------------------------------
+                // Internal ranking scores
+                // ---------------------------------------------
 
+                countryConfidence:
                     Math.min(
                         Math.max(
                             countryConfidence,
@@ -4307,7 +4258,6 @@ async function fetchMastodonVlogs(
 
 
                 vlogScore:
-
                     Math.min(
                         Math.max(
                             vlogScore,
@@ -4333,7 +4283,7 @@ async function fetchMastodonVlogs(
 
 
     // ========================================================
-    // SORT
+    // SORT CANDIDATES
     // ========================================================
 
     candidates.sort(
@@ -4341,6 +4291,8 @@ async function fetchMastodonVlogs(
 
             /*
              * 1. Country relevance
+             *
+             * Local first.
              */
 
             if (
@@ -4426,14 +4378,20 @@ async function fetchMastodonVlogs(
 
 
     /*
-     * Strong local first.
-     *
-     * Local inventory kam ho to possible/global
-     * content automatically fill karega.
-     *
      * IMPORTANT:
-     * 10 target tha aur 4 hi genuine videos mile,
-     * to 4 return honge — zero nahi.
+     *
+     * Country hard-filter nahi hai.
+     *
+     * Priority:
+     *
+     * strong local
+     *      ↓
+     * possible local
+     *      ↓
+     * genuine global fallback
+     *
+     * Agar requested=10 hai aur sirf 6 genuine
+     * candidates mile, to 6 hi return honge.
      */
 
     const videos =
@@ -4502,6 +4460,10 @@ async function fetchMastodonVlogs(
     };
 
 
+    // ========================================================
+    // FINAL LOG
+    // ========================================================
+
     console.log(
         `🐘 MASTODON DONE` +
         ` | country=${country}` +
@@ -4513,6 +4475,9 @@ async function fetchMastodonVlogs(
         ` | lowVlog=${lowVlogScore}` +
         ` | vlogPassed=${vlogPassed}` +
         ` | candidates=${candidates.length}` +
+        ` | strongCountry=${strongCountry.length}` +
+        ` | possibleCountry=${possibleCountry.length}` +
+        ` | weakCountry=${weakCountry.length}` +
         ` | returned=${videos.length}`
     );
 
