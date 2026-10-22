@@ -18,7 +18,7 @@ const MASTODON_ACCESS_TOKEN =
 // const BSKY_PDS =
 //     "https://bsky.social";
 const BSKY_PUBLIC_API =
-    "https://public.api.bsky.app";
+    "https://api.bsky.app";
 
 const MAX_OUTPUT_LIMIT = 20;
 const SEARCH_LIMIT = 50;
