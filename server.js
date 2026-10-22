@@ -1501,23 +1501,18 @@ if (search.nextCursor) {
 }
 
         if (
-            result.status === 200
-        ) {
-            debug.searchesSuccessful++;
-        }
+    search.status === 200
+) {
+    debug.searchesSuccessful++;
+}
 
-        debug.postsReceived +=
-            result.posts.length;
+debug.postsReceived +=
+    search.posts.length;
 
-
-        // ====================================================
-        // PROCESS POSTS
-        // ====================================================
-
-        for (
-            const post
-            of result.posts
-        ) {
+for (
+    const post
+    of search.posts
+) {
 
             const id =
                 cleanText(
@@ -1791,6 +1786,7 @@ const nextCursor =
 
 console.log(
     `🦋 BLUESKY PAGINATION DONE` +
+    ` | returned=${final.length}` +
     ` | hasMore=${hasMore}` +
     ` | activeQueries=${Object.keys(nextCursorMap).length}`
 );
@@ -1798,11 +1794,22 @@ console.log(
 
 return {
 
-    videos,
-
     debug,
 
-    tiers,
+    tiers: {
+
+        strongCountry:
+            strongCountry.length,
+
+        possibleCountry:
+            possibleCountry.length,
+
+        weakCountry:
+            weakCountry.length
+    },
+
+    videos:
+        final,
 
     nextCursor,
 
