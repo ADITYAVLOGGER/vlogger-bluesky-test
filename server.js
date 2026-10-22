@@ -452,36 +452,34 @@ async function searchPosts(
     cursor = null
 ) {
 
-    const params =
-        new URLSearchParams();
+    // ========================================================
+    // QUERY PARAMETERS
+    // ========================================================
 
-    params.set(
-        "q",
-        query
-    );
+    const params = {
 
-    params.set(
-        "sort",
-        "top"
-    );
+        q:
+            query,
 
-    params.set(
-        "limit",
-        String(SEARCH_LIMIT)
-    );
+        sort:
+            "top",
 
+        limit:
+            SEARCH_LIMIT
+    };
+
+
+    /*
+     * First request me cursor nahi bhejna.
+     *
+     * Next request me Bluesky se mila hua
+     * exact cursor bhejna hai.
+     */
     if (cursor) {
 
-        params.set(
-            "cursor",
-            String(cursor)
-        );
+        params.cursor =
+            String(cursor);
     }
-
-
-    const path =
-        "/xrpc/app.bsky.feed.searchPosts?" +
-        params.toString();
 
 
     console.log(
@@ -493,11 +491,102 @@ async function searchPosts(
 
     try {
 
-        const data =
+        // ====================================================
+        // IMPORTANT:
+        // Existing working blueskyGet() architecture preserve.
+        // ====================================================
+
+        const response =
             await blueskyGet(
-                path
+                "app.bsky.feed.searchPosts",
+                params
             );
 
+
+        // ====================================================
+        // READ RESPONSE
+        // ====================================================
+
+        const responseText =
+            await response.text();
+
+
+        // ====================================================
+        // HTTP ERROR
+        // ====================================================
+
+        if (
+            !response.ok
+        ) {
+
+            console.log(
+                `❌ BLUESKY SEARCH HTTP ERROR` +
+                ` | query=${query}` +
+                ` | status=${response.status}` +
+                ` | body=${responseText.slice(0, 300)}`
+            );
+
+
+            return {
+
+                query,
+
+                status:
+                    response.status,
+
+                posts: [],
+
+                /*
+                 * Failed request par cursor lose
+                 * nahi karna.
+                 */
+                nextCursor:
+                    cursor || null
+            };
+        }
+
+
+        // ====================================================
+        // PARSE JSON
+        // ====================================================
+
+        let data;
+
+
+        try {
+
+            data =
+                JSON.parse(
+                    responseText
+                );
+
+        } catch (error) {
+
+            console.log(
+                `❌ BLUESKY INVALID JSON` +
+                ` | query=${query}` +
+                ` | body=${responseText.slice(0, 300)}`
+            );
+
+
+            return {
+
+                query,
+
+                status:
+                    response.status,
+
+                posts: [],
+
+                nextCursor:
+                    cursor || null
+            };
+        }
+
+
+        // ====================================================
+        // POSTS
+        // ====================================================
 
         const posts =
             Array.isArray(
@@ -506,6 +595,10 @@ async function searchPosts(
                 ? data.posts
                 : [];
 
+
+        // ====================================================
+        // NEXT CURSOR
+        // ====================================================
 
         const nextCursor =
             cleanText(
@@ -516,6 +609,7 @@ async function searchPosts(
         console.log(
             `✅ BLUESKY SEARCH` +
             ` | query=${query}` +
+            ` | status=${response.status}` +
             ` | posts=${posts.length}` +
             ` | nextCursor=${nextCursor ? "YES" : "NO"}`
         );
@@ -526,7 +620,7 @@ async function searchPosts(
             query,
 
             status:
-                200,
+                response.status,
 
             posts,
 
@@ -539,7 +633,7 @@ async function searchPosts(
         console.log(
             `❌ BLUESKY SEARCH FAILED` +
             ` | query=${query}` +
-            ` | error=${error?.message || "unknown"}`
+            ` | error=${error?.message || error}`
         );
 
 
@@ -553,9 +647,8 @@ async function searchPosts(
             posts: [],
 
             /*
-             * IMPORTANT:
-             * Failed request par existing cursor preserve
-             * karna hai.
+             * Network/error case me current cursor
+             * preserve karenge.
              */
             nextCursor:
                 cursor || null
