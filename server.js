@@ -462,7 +462,7 @@ async function searchPosts(
             query,
 
         sort:
-            "top",
+            "latest",
 
         limit:
             SEARCH_LIMIT
