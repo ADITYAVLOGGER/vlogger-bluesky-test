@@ -3202,234 +3202,131 @@ function getMastodonHashtags(countryCode) {
 
 async function fetchMastodonHashtag(
     host,
-    hashtag
+    hashtag,
+    maxId = null
 ) {
 
-    const controller =
-        new AbortController();
+    const controller = new AbortController();
 
-    const timeout =
-        setTimeout(
-            () => {
-                controller.abort();
-            },
-            MASTODON_TIMEOUT_MS
-        );
+    const timeout = setTimeout(
+        () => controller.abort(),
+        MASTODON_TIMEOUT_MS
+    );
 
     try {
 
-        const safeHost =
-            String(
-                host || ""
-            )
-                .trim()
-                .toLowerCase();
+        const safeHost = String(host || "")
+            .trim()
+            .toLowerCase();
 
+        const safeTag = String(hashtag || "")
+            .trim()
+            .replace(/^#/, "");
 
-        const safeTag =
-            String(
-                hashtag || ""
-            )
-                .trim()
-                .replace(
-                    /^#/,
-                    ""
-                );
-
-
-        if (
-            !safeHost ||
-            !safeTag
-        ) {
-
+        if (!safeHost || !safeTag) {
             return {
-                hashtag:
-                    safeTag,
-
+                hashtag: safeTag,
                 statuses: [],
-
-                authRequired:
-                    false,
-
-                status:
-                    0
+                authRequired: false,
+                status: 0
             };
         }
 
+        const params = new URLSearchParams();
+
+        params.set("only_media", "true");
+        params.set("limit", "40");
+
+        if (maxId) {
+            params.set(
+                "max_id",
+                String(maxId)
+            );
+        }
 
         const url =
             `https://${safeHost}` +
             `/api/v1/timelines/tag/` +
             `${encodeURIComponent(safeTag)}` +
-            `?only_media=true&limit=40`;
-
-
-        /*
-         * IMPORTANT SECURITY:
-         *
-         * Mastodon access token sirf mastodon.social
-         * ko bhejna hai.
-         *
-         * Kisi third-party Mastodon host ko token
-         * kabhi forward nahi karna.
-         */
+            `?${params.toString()}`;
 
         const headers = {
-
-            "Accept":
-                "application/json",
-
-            "User-Agent":
-                "Vlogger/1.0"
+            "Accept": "application/json",
+            "User-Agent": "Vlogger/1.0"
         };
 
-
         if (
-            safeHost ===
-                "mastodon.social" &&
+            safeHost === "mastodon.social" &&
             MASTODON_ACCESS_TOKEN
         ) {
-
             headers.Authorization =
                 `Bearer ${MASTODON_ACCESS_TOKEN}`;
         }
 
-
         console.log(
             `🐘 MASTODON TAG REQUEST` +
-            ` | host=${safeHost}` +
-            ` | tag=${safeTag}`
+            ` | tag=${safeTag}` +
+            ` | maxId=${maxId || "FIRST"}`
         );
 
+        const response = await fetch(
+            url,
+            {
+                method: "GET",
+                headers,
+                signal: controller.signal
+            }
+        );
 
-        const response =
-            await fetch(
-                url,
-                {
-                    method:
-                        "GET",
-
-                    headers,
-
-                    signal:
-                        controller.signal
-                }
-            );
-
-
-        const body =
-            await response.text();
-
-
-        // ====================================================
-        // AUTH REQUIRED
-        // ====================================================
+        const body = await response.text();
 
         if (
             response.status === 401 ||
             response.status === 403 ||
             response.status === 422
         ) {
-
-            console.log(
-                `🔐 MASTODON AUTH/RESTRICTED` +
-                ` | host=${safeHost}` +
-                ` | tag=${safeTag}` +
-                ` | status=${response.status}`
-            );
-
-
             return {
-
-                hashtag:
-                    safeTag,
-
+                hashtag: safeTag,
                 statuses: [],
-
-                authRequired:
-                    true,
-
-                status:
-                    response.status
+                authRequired: true,
+                status: response.status
             };
         }
-
-
-        // ====================================================
-        // OTHER HTTP ERROR
-        // ====================================================
 
         if (!response.ok) {
 
             console.log(
                 `❌ MASTODON TAG FAILED` +
-                ` | host=${safeHost}` +
                 ` | tag=${safeTag}` +
                 ` | status=${response.status}` +
                 ` | body=${body.substring(0, 200)}`
             );
 
-
             return {
-
-                hashtag:
-                    safeTag,
-
+                hashtag: safeTag,
                 statuses: [],
-
-                authRequired:
-                    false,
-
-                status:
-                    response.status
+                authRequired: false,
+                status: response.status
             };
         }
-
-
-        // ====================================================
-        // PARSE JSON
-        // ====================================================
 
         let data;
 
-
         try {
-
-            data =
-                JSON.parse(
-                    body
-                );
-
+            data = JSON.parse(body);
         } catch {
-
-            console.log(
-                `❌ MASTODON INVALID JSON` +
-                ` | host=${safeHost}` +
-                ` | tag=${safeTag}`
-            );
-
-
             return {
-
-                hashtag:
-                    safeTag,
-
+                hashtag: safeTag,
                 statuses: [],
-
-                authRequired:
-                    false,
-
-                status:
-                    response.status
+                authRequired: false,
+                status: response.status
             };
         }
-
 
         const statuses =
             Array.isArray(data)
                 ? data
                 : [];
-
 
         console.log(
             `✅ MASTODON TAG` +
@@ -3437,60 +3334,32 @@ async function fetchMastodonHashtag(
             ` | statuses=${statuses.length}`
         );
 
-
         return {
-
-            hashtag:
-                safeTag,
-
+            hashtag: safeTag,
             statuses,
-
-            authRequired:
-                false,
-
-            status:
-                response.status
+            authRequired: false,
+            status: response.status
         };
 
-
     } catch (error) {
-
-        const timeoutError =
-            error?.name ===
-            "AbortError";
-
 
         console.log(
             `❌ MASTODON TAG ERROR` +
             ` | host=${host}` +
             ` | tag=${hashtag}` +
-            ` | timeout=${timeoutError}` +
             ` | error=${error?.message || "unknown"}`
         );
 
-
         return {
-
-            hashtag:
-                String(
-                    hashtag || ""
-                ),
-
+            hashtag: String(hashtag || ""),
             statuses: [],
-
-            authRequired:
-                false,
-
-            status:
-                0
+            authRequired: false,
+            status: 0
         };
-
 
     } finally {
 
-        clearTimeout(
-            timeout
-        );
+        clearTimeout(timeout);
     }
 }
 
@@ -3501,7 +3370,8 @@ async function fetchMastodonHashtag(
 
 async function fetchMastodonVlogs(
     countryCode,
-    requestedLimit
+    requestedLimit,
+    cursor = null
 ) {
 
     const country =
@@ -3561,9 +3431,10 @@ async function fetchMastodonVlogs(
             hashtags.map(
                 hashtag =>
                     fetchMastodonHashtag(
-                        host,
-                        hashtag
-                    )
+    host,
+    hashtag,
+    cursor
+)
             )
         );
 
@@ -3671,6 +3542,25 @@ async function fetchMastodonVlogs(
         `🐘 MASTODON UNIQUE` +
         ` | statuses=${uniqueStatuses.length}`
     );
+
+    let nextCursor = null;
+
+for (const status of uniqueStatuses) {
+
+    const id =
+        String(status?.id || "").trim();
+
+    if (!/^\d+$/.test(id)) {
+        continue;
+    }
+
+    if (
+        nextCursor === null ||
+        BigInt(id) < BigInt(nextCursor)
+    ) {
+        nextCursor = id;
+    }
+}
 
 
     // ========================================================
@@ -4483,13 +4373,16 @@ async function fetchMastodonVlogs(
 
 
     return {
+    videos,
+    debug,
+    tiers,
 
-        videos,
+    nextCursor,
 
-        debug,
-
-        tiers
-    };
+    hasMore:
+        nextCursor !== null &&
+        uniqueStatuses.length > 0
+};
 }
 
 
@@ -4880,6 +4773,12 @@ const server =
                             30
                         );
 
+                    const cursor =
+    cleanText(
+        requestUrl
+            .searchParams
+            .get("cursor")
+    ) || null;
 
                     console.log(
                         `🐘 API MASTODON` +
@@ -4888,12 +4787,12 @@ const server =
                     );
 
 
-                    const result =
-                        await fetchMastodonVlogs(
-                            country,
-                            requestedLimit
-                        );
-
+                   const result =
+    await fetchMastodonVlogs(
+        country,
+        requestedLimit,
+        cursor
+    );
 
                     /*
                      * FIX:
@@ -4911,38 +4810,105 @@ const server =
                      */
 
                     sendJson(
-                        res,
-                        200,
-                        {
+    res,
+    200,
+    {
+        status:
+            "success",
 
-                            status:
-                                "success",
+        provider:
+            "mastodon",
 
-                            provider:
-                                "mastodon",
+        country,
 
-                            country,
+        requested:
+            requestedLimit,
 
-                            requested:
-                                requestedLimit,
+        returned:
+            result.videos.length,
 
-                            returned:
-                                result.videos.length,
+        timeMs:
+            Date.now() -
+            startedAt,
 
-                            timeMs:
-                                Date.now() -
-                                startedAt,
+        debug:
+            result.debug,
 
-                            debug:
-                                result.debug,
+        tiers:
+            result.tiers,
 
-                            tiers:
-                                result.tiers,
+        nextCursor:
+            result.nextCursor,
 
-                            videos:
-                                result.videos
-                        }
-                    );
+        hasMore:
+            result.hasMore,
+
+        videos:
+            result.videos.map(
+                item => ({
+                    uniqueId:
+                        item.uniqueId,
+
+                    provider:
+                        "mastodon",
+
+                    videoUrl:
+                        item.videoUrl,
+
+                    thumbnailUrl:
+                        item.thumbnailUrl,
+
+                    originalPostUrl:
+                        item.originalPostUrl,
+
+                    title:
+                        item.title,
+
+                    description:
+                        item.description,
+
+                    creatorId:
+                        item.creatorId,
+
+                    creatorName:
+                        item.creatorName,
+
+                    creatorAvatar:
+                        item.creatorAvatar,
+
+                    language:
+                        item.language,
+
+                    detectedCountry:
+                        item.detectedCountry,
+
+                    views:
+                        item.views,
+
+                    likes:
+                        item.likes,
+
+                    comments:
+                        item.comments,
+
+                    shares:
+                        item.shares,
+
+                    publishedAt:
+                        item.publishedAt,
+
+                    countryConfidence:
+                        item.countryConfidence,
+
+                    vlogScore:
+                        item.vlogScore,
+
+                    engagementScore:
+                        item.engagementScore
+                })
+            )
+    }
+);
 
 
                     return;
