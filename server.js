@@ -1624,9 +1624,70 @@ async function fetchBlueskyVlogs(
             countryCode
         );
 
-    const cursorMap =
+    // ========================================================
+// DECODE PAGINATION STATE
+// ========================================================
+
+const decodedState =
     decodeBlueskyCursor(
         encodedCursor
+    );
+
+
+/*
+ * NEW cursor format:
+ *
+ * {
+ *     cursors: {
+ *         "india vlog": "...",
+ *         "hindi vlog": "...",
+ *         ...
+ *     },
+ *
+ *     seen: [
+ *         "at://...",
+ *         "at://..."
+ *     ]
+ * }
+ *
+ * Backward compatibility:
+ * purana cursor agar direct query-map hai,
+ * to usko bhi support karenge.
+ */
+
+const isNewCursorFormat =
+    decodedState &&
+    typeof decodedState === "object" &&
+    !Array.isArray(decodedState) &&
+    (
+        decodedState.cursors ||
+        decodedState.seen
+    );
+
+
+const cursorMap =
+    isNewCursorFormat
+        ? (
+            decodedState.cursors &&
+            typeof decodedState.cursors === "object" &&
+            !Array.isArray(decodedState.cursors)
+                ? decodedState.cursors
+                : {}
+        )
+        : decodedState;
+
+
+const previouslyReturned =
+    new Set(
+        isNewCursorFormat &&
+        Array.isArray(decodedState.seen)
+            ? decodedState.seen
+                .map(
+                    id =>
+                        cleanText(id)
+                )
+                .filter(Boolean)
+            : []
     );
 
 
@@ -1634,6 +1695,14 @@ const nextCursorMap = {
     ...cursorMap
 };
 
+
+console.log(
+    `🦋 BLUESKY PAGINATION` +
+    ` | country=${countryCode}` +
+    ` | incomingCursor=${encodedCursor ? "YES" : "FIRST"}` +
+    ` | queryCursors=${Object.keys(cursorMap).length}` +
+    ` | previouslyReturned=${previouslyReturned.size}`
+);
 
 console.log(
     `🦋 BLUESKY PAGINATION` +
@@ -1728,6 +1797,25 @@ for (
             if (!id) {
                 continue;
             }
+
+    // ------------------------------------------------
+// PREVIOUS PAGE DUPLICATE
+// ------------------------------------------------
+
+if (
+    previouslyReturned.has(id)
+) {
+
+    debug.duplicates++;
+
+    console.log(
+        `♻️ BLUESKY OLD PAGE SKIP` +
+        ` | id=${id}` +
+        ` | query=${query}`
+    );
+
+    continue;
+}
 
 
             // ------------------------------------------------
@@ -1976,23 +2064,74 @@ for (
     //     videos:
     //         final
     // };
-    const hasMore =
+    // ========================================================
+// BUILD NEXT PAGINATION STATE
+// ========================================================
+
+const hasMore =
     Object.keys(
         nextCursorMap
     ).length > 0;
 
 
+/*
+ * Sirf ACTUALLY RETURNED videos ko seen mark karna hai.
+ *
+ * Filtered/rejected candidates ko seen nahi karenge.
+ */
+
+const returnedIds =
+    final
+        .map(
+            item =>
+                cleanText(
+                    item?.id
+                )
+        )
+        .filter(Boolean);
+
+
+/*
+ * Previous pages + current response.
+ *
+ * Last 200 IDs enough hain.
+ * Unlimited IDs cursor me rakhne se URL bahut bada
+ * hota jayega.
+ */
+
+const seenForNextPage =
+    [
+        ...previouslyReturned,
+        ...returnedIds
+    ]
+        .filter(
+            (
+                id,
+                index,
+                array
+            ) =>
+                array.indexOf(id) ===
+                index
+        )
+        .slice(-200);
+
+
 const nextCursor =
     hasMore
-        ? encodeBlueskyCursor(
-            nextCursorMap
-        )
+        ? encodeBlueskyCursor({
+            cursors:
+                nextCursorMap,
+
+            seen:
+                seenForNextPage
+        })
         : null;
 
 
 console.log(
     `🦋 BLUESKY PAGINATION DONE` +
     ` | returned=${final.length}` +
+    ` | remembered=${seenForNextPage.length}` +
     ` | hasMore=${hasMore}` +
     ` | activeQueries=${Object.keys(nextCursorMap).length}`
 );
