@@ -371,88 +371,196 @@ async function blueskyGet(
 }
 
 
+function encodeBlueskyCursor(cursorMap) {
+
+    try {
+
+        const json =
+            JSON.stringify(
+                cursorMap || {}
+            );
+
+        return Buffer
+            .from(
+                json,
+                "utf8"
+            )
+            .toString(
+                "base64url"
+            );
+
+    } catch (error) {
+
+        console.log(
+            "❌ BLUESKY CURSOR ENCODE FAILED",
+            error?.message || error
+        );
+
+        return null;
+    }
+}
+
+
+function decodeBlueskyCursor(cursor) {
+
+    if (!cursor) {
+        return {};
+    }
+
+    try {
+
+        const json =
+            Buffer
+                .from(
+                    String(cursor),
+                    "base64url"
+                )
+                .toString(
+                    "utf8"
+                );
+
+        const parsed =
+            JSON.parse(json);
+
+        if (
+            !parsed ||
+            typeof parsed !== "object" ||
+            Array.isArray(parsed)
+        ) {
+            return {};
+        }
+
+        return parsed;
+
+    } catch (error) {
+
+        console.log(
+            "⚠️ INVALID BLUESKY CURSOR - STARTING FRESH"
+        );
+
+        return {};
+    }
+}
+
+
 // ============================================================
 // BLUESKY SEARCH
 // ============================================================
 
-async function searchPosts(query) {
+async function searchPosts(
+    query,
+    cursor = null
+) {
 
-    console.log(
-        `🔎 BLUESKY SEARCH | query=${query}`
+    const params =
+        new URLSearchParams();
+
+    params.set(
+        "q",
+        query
     );
 
-    const response =
-        await blueskyGet(
-            "app.bsky.feed.searchPosts",
-            {
-                q: query,
-                sort: "top",
-                limit: SEARCH_LIMIT
-            }
+    params.set(
+        "sort",
+        "top"
+    );
+
+    params.set(
+        "limit",
+        String(SEARCH_LIMIT)
+    );
+
+    if (cursor) {
+
+        params.set(
+            "cursor",
+            String(cursor)
         );
-
-    const responseText =
-        await response.text();
-
-    if (!response.ok) {
-
-        console.log(
-            `❌ BLUESKY SEARCH FAILED | query=${query} | status=${response.status}`
-        );
-
-        console.log(
-            responseText.substring(
-                0,
-                500
-            )
-        );
-
-        return {
-            query,
-            status:
-                response.status,
-            posts: []
-        };
     }
 
-    let data;
+
+    const path =
+        "/xrpc/app.bsky.feed.searchPosts?" +
+        params.toString();
+
+
+    console.log(
+        `🔎 BLUESKY SEARCH` +
+        ` | query=${query}` +
+        ` | cursor=${cursor ? "YES" : "FIRST"}`
+    );
+
 
     try {
 
-        data =
-            JSON.parse(
-                responseText
+        const data =
+            await blueskyGet(
+                path
             );
 
-    } catch {
+
+        const posts =
+            Array.isArray(
+                data?.posts
+            )
+                ? data.posts
+                : [];
+
+
+        const nextCursor =
+            cleanText(
+                data?.cursor
+            ) || null;
+
 
         console.log(
-            `❌ INVALID JSON | query=${query}`
+            `✅ BLUESKY SEARCH` +
+            ` | query=${query}` +
+            ` | posts=${posts.length}` +
+            ` | nextCursor=${nextCursor ? "YES" : "NO"}`
         );
 
+
         return {
+
             query,
+
             status:
-                response.status,
-            posts: []
+                200,
+
+            posts,
+
+            nextCursor
+        };
+
+
+    } catch (error) {
+
+        console.log(
+            `❌ BLUESKY SEARCH FAILED` +
+            ` | query=${query}` +
+            ` | error=${error?.message || "unknown"}`
+        );
+
+
+        return {
+
+            query,
+
+            status:
+                0,
+
+            posts: [],
+
+            /*
+             * IMPORTANT:
+             * Failed request par existing cursor preserve
+             * karna hai.
+             */
+            nextCursor:
+                cursor || null
         };
     }
-
-    const posts =
-        Array.isArray(data.posts)
-            ? data.posts
-            : [];
-
-    console.log(
-        `✅ BLUESKY SEARCH | query=${query} | posts=${posts.length}`
-    );
-
-    return {
-        query,
-        status:
-            response.status,
-        posts
-    };
 }
 
 
@@ -1301,13 +1409,31 @@ function convertPost(
 
 async function fetchBlueskyVlogs(
     countryCode,
-    requestedLimit
+    requestedLimit,
+    encodedCursor = null
 ) {
 
     const queries =
         getCountryQueries(
             countryCode
         );
+
+    const cursorMap =
+    decodeBlueskyCursor(
+        encodedCursor
+    );
+
+
+const nextCursorMap = {
+    ...cursorMap
+};
+
+
+console.log(
+    `🦋 BLUESKY PAGINATION` +
+    ` | country=${countryCode}` +
+    ` | incomingCursor=${encodedCursor ? "YES" : "FIRST"}`
+);
 
     const unique =
         new Map();
@@ -1345,10 +1471,34 @@ async function fetchBlueskyVlogs(
 
         debug.searchesAttempted++;
 
-        const result =
-            await searchPosts(
-                query
-            );
+        const queryCursor =
+    cursorMap[query] ||
+    null;
+
+
+const search =
+    await searchPosts(
+        query,
+        queryCursor
+    );
+
+
+/*
+ * Har query ka apna Bluesky cursor.
+ */
+if (search.nextCursor) {
+
+    nextCursorMap[query] =
+        search.nextCursor;
+
+} else {
+
+    /*
+     * null means is query me currently
+     * next page available nahi hai.
+     */
+    delete nextCursorMap[query];
+}
 
         if (
             result.status === 200
@@ -1606,25 +1756,58 @@ async function fetchBlueskyVlogs(
             );
 
 
-    return {
+    // return {
 
-        debug,
+    //     debug,
 
-        tiers: {
+    //     tiers: {
 
-            strongCountry:
-                strongCountry.length,
+    //         strongCountry:
+    //             strongCountry.length,
 
-            possibleCountry:
-                possibleCountry.length,
+    //         possibleCountry:
+    //             possibleCountry.length,
 
-            weakCountry:
-                weakCountry.length
-        },
+    //         weakCountry:
+    //             weakCountry.length
+    //     },
 
-        videos:
-            final
-    };
+    //     videos:
+    //         final
+    // };
+    const hasMore =
+    Object.keys(
+        nextCursorMap
+    ).length > 0;
+
+
+const nextCursor =
+    hasMore
+        ? encodeBlueskyCursor(
+            nextCursorMap
+        )
+        : null;
+
+
+console.log(
+    `🦋 BLUESKY PAGINATION DONE` +
+    ` | hasMore=${hasMore}` +
+    ` | activeQueries=${Object.keys(nextCursorMap).length}`
+);
+
+
+return {
+
+    videos,
+
+    debug,
+
+    tiers,
+
+    nextCursor,
+
+    hasMore
+};
 }
 
 
@@ -4589,6 +4772,15 @@ const server =
                             MAX_OUTPUT_LIMIT
                         );
 
+                    const cursor =
+    cleanText(
+        requestUrl
+            .searchParams
+            .get(
+                "cursor"
+            )
+    ) || null;
+
 
                     console.log(
                         `🦋 API BLUESKY` +
@@ -4598,116 +4790,132 @@ const server =
 
 
                     const result =
-                        await fetchBlueskyVlogs(
-                            country,
-                            requestedLimit
-                        );
+    await fetchBlueskyVlogs(
+        country,
+        requestedLimit,
+        cursor
+    );
 
 
                     sendJson(
-                        res,
-                        200,
-                        {
+    res,
+    200,
+    {
 
-                            status:
-                                "success",
+        status:
+            "success",
 
-                            provider:
-                                "bluesky",
+        provider:
+            "bluesky",
 
-                            country,
+        country,
 
-                            requested:
-                                requestedLimit,
+        requested:
+            requestedLimit,
 
-                            returned:
-                                result.videos.length,
+        returned:
+            result.videos.length,
 
-                            timeMs:
-                                Date.now() -
-                                startedAt,
+        timeMs:
+            Date.now() -
+            startedAt,
 
-                            debug:
-                                result.debug,
+        debug:
+            result.debug,
 
-                            tiers:
-                                result.tiers,
+        tiers:
+            result.tiers,
 
-                            videos:
-                                result.videos
-                                    .map(
-                                        item => ({
+        // =============================================
+        // PAGINATION
+        // =============================================
 
-                                            uniqueId:
-                                                item.id,
+        nextCursor:
+            result.nextCursor,
 
-                                            provider:
-                                                "bluesky",
+        hasMore:
+            result.hasMore,
 
-                                            videoUrl:
-                                                item.videoUrl,
+        // =============================================
+        // VIDEOS
+        // =============================================
 
-                                            thumbnailUrl:
-                                                item.thumbnailUrl,
+        videos:
+            result.videos
+                .map(
+                    item => ({
 
-                                            originalPostUrl:
-                                                item.originalPostUrl,
+                        uniqueId:
+                            item.id,
 
-                                            title:
-                                                item.caption,
+                        provider:
+                            "bluesky",
 
-                                            description:
-                                                item.caption,
+                        videoUrl:
+                            item.videoUrl,
 
-                                            creatorId:
-                                                item.creatorId,
+                        thumbnailUrl:
+                            item.thumbnailUrl,
 
-                                            creatorName:
-                                                item.creatorName,
+                        originalPostUrl:
+                            item.originalPostUrl,
 
-                                            creatorAvatar:
-                                                item.creatorAvatar,
+                        title:
+                            item.caption,
 
-                                            language:
-                                                item.language,
+                        description:
+                            item.caption,
 
-                                            detectedCountry:
-                                                item.countryScore >= 60
-                                                    ? country
-                                                    : null,
+                        creatorId:
+                            item.creatorId,
 
-                                            views:
-                                                0,
+                        creatorName:
+                            item.creatorName,
 
-                                            likes:
-                                                item.likes,
+                        creatorAvatar:
+                            item.creatorAvatar,
 
-                                            comments:
-                                                item.comments,
+                        language:
+                            item.language,
 
-                                            shares:
-                                                item.shares,
+                        detectedCountry:
+                            item.countryScore >= 60
+                                ? country
+                                : null,
 
-                                            publishedAt:
-                                                item.indexedAt
-                                                    ? (
-                                                        Date.parse(
-                                                            item.indexedAt
-                                                        ) || 0
-                                                    )
-                                                    : 0,
+                        views:
+                            0,
 
-                                            countryConfidence:
-                                                item.countryScore,
+                        likes:
+                            item.likes,
 
-                                            vlogScore:
-                                                item.vlogScore,
+                        comments:
+                            item.comments,
 
-                                            engagementScore:
-                                                item.engagementScore
-                                        })
-                                    )
-                        }
+                        shares:
+                            item.shares,
+
+                        publishedAt:
+                            item.indexedAt
+                                ? (
+                                    Date.parse(
+                                        item.indexedAt
+                                    ) || 0
+                                )
+                                : 0,
+
+                        countryConfidence:
+                            item.countryScore,
+
+                        vlogScore:
+                            item.vlogScore,
+
+                        engagementScore:
+                            item.engagementScore
+                    })
+                )
+    }
+);
                     );
 
 
