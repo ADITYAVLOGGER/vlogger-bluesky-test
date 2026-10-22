@@ -3053,44 +3053,62 @@ function calculateMastodonVlogScore(
 
 const MASTODON_HASHTAGS = {
 
+    // IN: [
+
+    //     "india",
+
+    //     "travelindia",
+
+    //     "indianfood",
+
+    //     "delhi",
+
+    //     "mumbai",
+
+    //     "bangalore",
+
+    //     "bengaluru",
+
+    //     "kolkata",
+
+    //     "chennai",
+
+    //     "hyderabad",
+
+    //     "kerala",
+
+    //     "goa",
+
+    //     "travel",
+
+    //     "food",
+
+    //     "streetfood",
+
+    //     "dailylife",
+
+    //     "dayinmylife",
+
+    //     "lifestyle"
+    // ],
+
     IN: [
-
-        "india",
-
-        "travelindia",
-
-        "indianfood",
-
-        "delhi",
-
-        "mumbai",
-
-        "bangalore",
-
-        "bengaluru",
-
-        "kolkata",
-
-        "chennai",
-
-        "hyderabad",
-
-        "kerala",
-
-        "goa",
-
-        "travel",
-
-        "food",
-
-        "streetfood",
-
-        "dailylife",
-
-        "dayinmylife",
-
-        "lifestyle"
-    ],
+    "india",
+    "dayinmylife",
+    "dailylife",
+    "travelvlog",
+    "foodvlog",
+    "lifestyle",
+    "travelindia",
+    "streetfood",
+    "college",
+    "roadtrip",
+    "delhi",
+    "mumbai",
+    "bangalore",
+    "kerala",
+    "goa"
+],
 
 
     JP: [
@@ -3183,28 +3201,38 @@ const MASTODON_HASHTAGS = {
     ],
 
 
+    // DEFAULT: [
+
+    //     "travel",
+
+    //     "food",
+
+    //     "streetfood",
+
+    //     "dailylife",
+
+    //     "dayinmylife",
+
+    //     "lifestyle",
+
+    //     "citylife",
+
+    //     "college",
+
+    //     "vacation",
+
+    //     "roadtrip"
+    // ]
     DEFAULT: [
-
-        "travel",
-
-        "food",
-
-        "streetfood",
-
-        "dailylife",
-
-        "dayinmylife",
-
-        "lifestyle",
-
-        "citylife",
-
-        "college",
-
-        "vacation",
-
-        "roadtrip"
-    ]
+    "dayinmylife",
+    "dailylife",
+    "travelvlog",
+    "foodvlog",
+    "lifestyle",
+    "roadtrip",
+    "citylife",
+    "travel"
+]
 };
 
 
@@ -4018,14 +4046,31 @@ async function fetchMastodonVlogs(
              * broad lifestyle words.
              */
 
+            // if (
+            //     vlogScore < 40
+            // ) {
+
+            //     lowVlogScore++;
+
+            //     continue;
+            // }
             if (
-                vlogScore < 40
-            ) {
+    vlogScore < 40
+) {
 
-                lowVlogScore++;
+    lowVlogScore++;
 
-                continue;
-            }
+    console.log(
+        `📉 MASTODON LOW VLOG` +
+        ` | id=${status?.id || "unknown"}` +
+        ` | score=${vlogScore}` +
+        ` | creator=${cleanText(status?.account?.display_name)}` +
+        ` | tags=${tags.join(",")}` +
+        ` | text=${postText.substring(0, 300)}`
+    );
+
+    continue;
+}
 
 
             vlogPassed++;
