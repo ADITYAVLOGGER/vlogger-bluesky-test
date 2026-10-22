@@ -898,11 +898,22 @@ function containsBlockedContent(text) {
 
     const value =
         String(text || "")
-            .toLowerCase();
+            .toLowerCase()
+            .replace(/[_#./\\|]+/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
 
-    const blocked = [
 
-        // News / politics
+    // ========================================================
+    // NORMAL BLOCKED PHRASES
+    // ========================================================
+
+    const blockedPhrases = [
+
+        // ----------------------------------------------------
+        // NEWS / POLITICS
+        // ----------------------------------------------------
+
         "breaking news",
         "breaking:",
         "election",
@@ -915,26 +926,38 @@ function containsBlockedContent(text) {
         "protesters",
         "parliament",
 
-        // Gaming
+        // ----------------------------------------------------
+        // GAMING
+        // ----------------------------------------------------
+
         "gameplay",
         "walkthrough",
         "gaming stream",
         "let's play",
         "lets play",
 
-        // Tutorials / courses
+        // ----------------------------------------------------
+        // TUTORIALS / COURSES
+        // ----------------------------------------------------
+
         "tutorial",
         "how to ",
         "course ",
         "lesson ",
         "lecture ",
 
-        // Reviews
+        // ----------------------------------------------------
+        // REVIEWS
+        // ----------------------------------------------------
+
         "unboxing",
         "product review",
         "tech review",
 
-        // Movies / copied entertainment
+        // ----------------------------------------------------
+        // MOVIES / COPIED ENTERTAINMENT
+        // ----------------------------------------------------
+
         "movie trailer",
         "official trailer",
         "full movie",
@@ -943,20 +966,110 @@ function containsBlockedContent(text) {
         "music video",
         "official music",
 
-        // Podcast/interview
+        // ----------------------------------------------------
+        // PODCAST / INTERVIEW
+        // ----------------------------------------------------
+
         "podcast",
         "full interview",
 
-        // Screen/demo content
+        // ----------------------------------------------------
+        // SCREEN / DEMO
+        // ----------------------------------------------------
+
         "screen recording",
         "software demo",
-        "app demo"
+        "app demo",
+
+        // ----------------------------------------------------
+        // EXPLICIT / ADULT CONTENT
+        // ----------------------------------------------------
+
+        "porn",
+        "porno",
+        "pornography",
+        "nsfw",
+        "nude",
+        "nudes",
+        "nudity",
+        "xxx",
+        "onlyfans",
+
+        "incest",
+        "momcest",
+
+        "mother son",
+        "mother-son",
+
+        "father daughter",
+        "father-daughter",
+
+        "brother sister",
+        "brother-sister",
+
+        "stepmom",
+        "stepson",
+        "stepdaughter",
+        "stepfather",
+        "stepbrother",
+        "stepsister",
+
+        "big boobs",
+        "bigboobs",
+
+        "fetish",
+        "bdsm",
+        "horny",
+        "erotic",
+        "erotica"
     ];
 
-    return blocked.some(
-        word =>
-            value.includes(word)
-    );
+
+    if (
+        blockedPhrases.some(
+            phrase =>
+                value.includes(phrase)
+        )
+    ) {
+
+        return true;
+    }
+
+
+    // ========================================================
+    // WORD-BOUNDARY SENSITIVE TERMS
+    //
+    // "sex" ko includes() se check nahi karenge,
+    // warna "Sussex" jaisi innocent string block ho sakti hai.
+    // ========================================================
+
+    const blockedWordPatterns = [
+
+        /\bsex\b/i,
+        /\bsexual\b/i,
+        /\bsexy\b/i,
+
+        /\bboobs?\b/i,
+        /\bbreasts?\b/i,
+
+        /\bnaked\b/i,
+
+        /\bexplicit\b/i
+    ];
+
+
+    if (
+        blockedWordPatterns.some(
+            pattern =>
+                pattern.test(value)
+        )
+    ) {
+
+        return true;
+    }
+
+
+    return false;
 }
 
 
