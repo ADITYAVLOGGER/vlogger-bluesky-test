@@ -690,9 +690,42 @@ async function searchPosts(
          * Kam results aaye => is query ko exhausted
          * consider kar sakte hain.
          */
-        const hasMore =
+    //     const hasMore =
+    // posts.length > 0 &&
+    // nextUntil !== null;
+
+const currentUntilMs =
+    until
+        ? Date.parse(until)
+        : null;
+
+const nextUntilMs =
+    nextUntil
+        ? Date.parse(nextUntil)
+        : null;
+
+
+/*
+ * Continue only when time boundary actually moves
+ * backwards.
+ *
+ * Isse same result/timestamp par query forever
+ * loop nahi karegi.
+ */
+const boundaryMovedBackward =
+    until === null ||
+    (
+        Number.isFinite(currentUntilMs) &&
+        Number.isFinite(nextUntilMs) &&
+        nextUntilMs < currentUntilMs
+    );
+
+
+const hasMore =
     posts.length > 0 &&
-    nextUntil !== null;
+    nextUntil !== null &&
+    boundaryMovedBackward;
+        
         // const hasMore =
         //     posts.length >= SEARCH_LIMIT &&
         //     nextUntil !== null;
