@@ -546,8 +546,7 @@ const hasMore =
 // ============================================================
 
 const BLUESKY_VIDEO_FEED =
-    "at://did:plc:tenurhgjptubkk5zf5qhi3og/app.bsky.feed.generator/thevids";
-
+    "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/thevids";
 
 async function fetchBlueskyVideoFeed(
     cursor = null,
@@ -6063,7 +6062,9 @@ const server =
                                     "/api/bluesky/vlogs?country=IN&limit=10",
 
                                 mastodon:
-                                    "/api/mastodon/vlogs?country=IN&limit=10"
+                                    "/api/mastodon/vlogs?country=IN&limit=10",
+                                blueskyfeed:
+                                    "/test/bluesky-video-feed"
                             }
                         }
                     );
