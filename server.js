@@ -14,7 +14,7 @@ const BSKY_PUBLIC_API =
     "https://api.bsky.app";
 
 const MAX_OUTPUT_LIMIT = 20;
-const SEARCH_LIMIT = 50;
+const SEARCH_LIMIT = 100;
 
 const MASTODON_TIMEOUT_MS = 8000;
 
