@@ -6110,6 +6110,68 @@ const server =
                     return;
                 }
 
+                // =================================================
+// TEST BLUESKY VIDEO FEED
+// =================================================
+
+if (
+    req.method === "GET" &&
+    pathname === "/test/bluesky-video-feed"
+) {
+
+    console.log(
+        "🧪 TESTING BLUESKY VIDEO FEED"
+    );
+
+
+    const result =
+        await fetchBlueskyVideoFeed(
+            null,
+            20
+        );
+
+
+    sendJson(
+        res,
+        200,
+        {
+            status:
+                "success",
+
+            received:
+                result.posts.length,
+
+            hasMore:
+                result.hasMore,
+
+            cursor:
+                result.cursor,
+
+            videos:
+                result.posts.map(
+                    post => ({
+                        uri:
+                            post?.uri || null,
+
+                        creator:
+                            post?.author?.handle || null,
+
+                        text:
+                            post?.record?.text || "",
+
+                        hasPlayableVideo:
+                            Boolean(
+                                extractVideo(post)
+                            )
+                    })
+                )
+        }
+    );
+
+
+    return;
+}
+
 
                 // =================================================
                 // BLUESKY VLOGS
