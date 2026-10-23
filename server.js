@@ -3849,43 +3849,83 @@ async function fetchMastodonHashtag(
     maxId = null
 ) {
 
-    const controller = new AbortController();
+    const controller =
+        new AbortController();
 
-    const timeout = setTimeout(
-        () => controller.abort(),
-        MASTODON_TIMEOUT_MS
-    );
+    const timeout =
+        setTimeout(
+            () => controller.abort(),
+            MASTODON_TIMEOUT_MS
+        );
+
 
     try {
 
-        const safeHost = String(host || "")
-            .trim()
-            .toLowerCase();
+        const safeHost =
+            String(host || "")
+                .trim()
+                .toLowerCase();
 
-        const safeTag = String(hashtag || "")
-            .trim()
-            .replace(/^#/, "");
 
-        if (!safeHost || !safeTag) {
+        const safeTag =
+            String(hashtag || "")
+                .trim()
+                .replace(/^#/, "");
+
+
+        if (
+            !safeHost ||
+            !safeTag
+        ) {
+
             return {
                 hashtag: safeTag,
                 statuses: [],
                 authRequired: false,
-                status: 0
+                status: 0,
+                nextMaxId: null,
+                hasMore: false
             };
         }
 
-        const params = new URLSearchParams();
 
-        params.set("only_media", "true");
-        params.set("limit", "40");
+        // ====================================================
+        // PARAMETERS
+        // ====================================================
 
+        const params =
+            new URLSearchParams();
+
+
+        params.set(
+            "only_media",
+            "true"
+        );
+
+
+        params.set(
+            "limit",
+            "40"
+        );
+
+
+        /*
+         * IMPORTANT:
+         *
+         * Har hashtag ka APNA max_id aayega.
+         */
         if (maxId) {
+
             params.set(
                 "max_id",
                 String(maxId)
             );
         }
+
+
+        // ====================================================
+        // URL
+        // ====================================================
 
         const url =
             `https://${safeHost}` +
@@ -3893,18 +3933,35 @@ async function fetchMastodonHashtag(
             `${encodeURIComponent(safeTag)}` +
             `?${params.toString()}`;
 
+
+        // ====================================================
+        // HEADERS
+        // ====================================================
+
         const headers = {
-            "Accept": "application/json",
-            "User-Agent": "Vlogger/1.0"
+
+            "Accept":
+                "application/json",
+
+            "User-Agent":
+                "Vlogger/1.0"
         };
 
+
+        /*
+         * Token sirf mastodon.social ko.
+         *
+         * Kisi unknown host ko token forward nahi hoga.
+         */
         if (
             safeHost === "mastodon.social" &&
             MASTODON_ACCESS_TOKEN
         ) {
+
             headers.Authorization =
                 `Bearer ${MASTODON_ACCESS_TOKEN}`;
         }
+
 
         console.log(
             `🐘 MASTODON TAG REQUEST` +
@@ -3912,29 +3969,51 @@ async function fetchMastodonHashtag(
             ` | maxId=${maxId || "FIRST"}`
         );
 
-        const response = await fetch(
-            url,
-            {
-                method: "GET",
-                headers,
-                signal: controller.signal
-            }
-        );
 
-        const body = await response.text();
+        // ====================================================
+        // REQUEST
+        // ====================================================
+
+        const response =
+            await fetch(
+                url,
+                {
+                    method: "GET",
+                    headers,
+                    signal:
+                        controller.signal
+                }
+            );
+
+
+        const body =
+            await response.text();
+
+
+        // ====================================================
+        // AUTH / RESTRICTED
+        // ====================================================
 
         if (
             response.status === 401 ||
             response.status === 403 ||
             response.status === 422
         ) {
+
             return {
                 hashtag: safeTag,
                 statuses: [],
                 authRequired: true,
-                status: response.status
+                status: response.status,
+                nextMaxId: null,
+                hasMore: false
             };
         }
+
+
+        // ====================================================
+        // HTTP ERROR
+        // ====================================================
 
         if (!response.ok) {
 
@@ -3945,44 +4024,149 @@ async function fetchMastodonHashtag(
                 ` | body=${body.substring(0, 200)}`
             );
 
+
             return {
                 hashtag: safeTag,
                 statuses: [],
                 authRequired: false,
-                status: response.status
+                status: response.status,
+                nextMaxId: null,
+                hasMore: false
             };
         }
+
+
+        // ====================================================
+        // JSON
+        // ====================================================
 
         let data;
 
+
         try {
-            data = JSON.parse(body);
+
+            data =
+                JSON.parse(
+                    body
+                );
+
         } catch {
+
             return {
                 hashtag: safeTag,
                 statuses: [],
                 authRequired: false,
-                status: response.status
+                status: response.status,
+                nextMaxId: null,
+                hasMore: false
             };
         }
+
 
         const statuses =
             Array.isArray(data)
                 ? data
                 : [];
 
+
+        // ====================================================
+        // FIND NEXT max_id FOR THIS HASHTAG
+        // ====================================================
+
+        let nextMaxId =
+            null;
+
+
+        for (
+            const status
+            of statuses
+        ) {
+
+            const id =
+                String(
+                    status?.id ||
+                    ""
+                )
+                    .trim();
+
+
+            /*
+             * Mastodon status IDs on this endpoint are
+             * numeric strings.
+             */
+            if (
+                !/^\d+$/.test(id)
+            ) {
+                continue;
+            }
+
+
+            if (
+                nextMaxId === null ||
+                BigInt(id) <
+                    BigInt(nextMaxId)
+            ) {
+
+                nextMaxId =
+                    id;
+            }
+        }
+
+
+        // ====================================================
+        // PREVENT STUCK CURSOR
+        // ====================================================
+
+        const cursorMoved =
+            maxId === null ||
+            (
+                nextMaxId !== null &&
+                String(nextMaxId) !==
+                    String(maxId)
+            );
+
+
+        /*
+         * Don't require statuses.length === 40.
+         *
+         * Some timelines can return fewer results while an
+         * older max_id is still useful.
+         *
+         * Query is continued only while its boundary moves.
+         */
+        const hasMore =
+            statuses.length > 0 &&
+            nextMaxId !== null &&
+            cursorMoved;
+
+
         console.log(
             `✅ MASTODON TAG` +
             ` | tag=${safeTag}` +
-            ` | statuses=${statuses.length}`
+            ` | statuses=${statuses.length}` +
+            ` | nextMaxId=${nextMaxId || "NONE"}` +
+            ` | hasMore=${hasMore}`
         );
 
+
         return {
-            hashtag: safeTag,
+
+            hashtag:
+                safeTag,
+
             statuses,
-            authRequired: false,
-            status: response.status
+
+            authRequired:
+                false,
+
+            status:
+                response.status,
+
+            nextMaxId,
+
+            hasMore
         };
+
 
     } catch (error) {
 
@@ -3993,16 +4177,119 @@ async function fetchMastodonHashtag(
             ` | error=${error?.message || "unknown"}`
         );
 
+
         return {
-            hashtag: String(hashtag || ""),
+
+            hashtag:
+                String(
+                    hashtag ||
+                    ""
+                ),
+
             statuses: [],
-            authRequired: false,
-            status: 0
+
+            authRequired:
+                false,
+
+            status:
+                0,
+
+            nextMaxId:
+                null,
+
+            hasMore:
+                false
         };
+
 
     } finally {
 
-        clearTimeout(timeout);
+        clearTimeout(
+            timeout
+        );
+    }
+}
+
+function encodeMastodonCursor(
+    state
+) {
+
+    try {
+
+        return Buffer
+            .from(
+                JSON.stringify(
+                    state
+                ),
+                "utf8"
+            )
+            .toString(
+                "base64url"
+            );
+
+    } catch (error) {
+
+        console.log(
+            `❌ MASTODON CURSOR ENCODE ERROR` +
+            ` | error=${error?.message || error}`
+        );
+
+        return null;
+    }
+}
+
+
+function decodeMastodonCursor(
+    encodedCursor
+) {
+
+    if (!encodedCursor) {
+        return null;
+    }
+
+
+    try {
+
+        const json =
+            Buffer
+                .from(
+                    String(
+                        encodedCursor
+                    ),
+                    "base64url"
+                )
+                .toString(
+                    "utf8"
+                );
+
+
+        const parsed =
+            JSON.parse(
+                json
+            );
+
+
+        if (
+            !parsed ||
+            typeof parsed !== "object" ||
+            Array.isArray(parsed)
+        ) {
+
+            return null;
+        }
+
+
+        return parsed;
+
+
+    } catch (error) {
+
+        console.log(
+            `❌ MASTODON CURSOR DECODE ERROR` +
+            ` | error=${error?.message || error}`
+        );
+
+        return null;
     }
 }
 
@@ -4014,7 +4301,7 @@ async function fetchMastodonHashtag(
 async function fetchMastodonVlogs(
     countryCode,
     requestedLimit,
-    cursor = null
+    encodedCursor = null
 ) {
 
     const country =
@@ -4038,15 +4325,6 @@ async function fetchMastodonVlogs(
         );
 
 
-    /*
-     * Currently discovery mastodon.social par.
-     *
-     * Future me country-specific instances add kar sakte hain.
-     * IMPORTANT:
-     * Mastodon token kabhi unknown/dusre host ko forward
-     * nahi karna.
-     */
-
     const host =
         "mastodon.social";
 
@@ -4057,12 +4335,113 @@ async function fetchMastodonVlogs(
         );
 
 
+    // ========================================================
+    // DECODE OUR PAGINATION STATE
+    // ========================================================
+
+    const decodedState =
+        decodeMastodonCursor(
+            encodedCursor
+        );
+
+
+    /*
+     * Cursor structure:
+     *
+     * {
+     *     cursors: {
+     *         india: "115...",
+     *         vlog: "115...",
+     *         travel: "115..."
+     *     },
+     *
+     *     seen: [
+     *         "https://...",
+     *         "https://..."
+     *     ]
+     * }
+     */
+
+
+    const cursorMap =
+        decodedState &&
+        typeof decodedState === "object" &&
+        !Array.isArray(decodedState) &&
+        decodedState.cursors &&
+        typeof decodedState.cursors === "object" &&
+        !Array.isArray(decodedState.cursors)
+            ? decodedState.cursors
+            : {};
+
+
+    const previouslyReturned =
+        new Set(
+            decodedState &&
+            typeof decodedState === "object" &&
+            !Array.isArray(decodedState) &&
+            Array.isArray(decodedState.seen)
+                ? decodedState.seen
+                    .map(
+                        id =>
+                            cleanText(id)
+                    )
+                    .filter(Boolean)
+                : []
+        );
+
+
+    const firstPage =
+        !encodedCursor;
+
+
     console.log(
         `🐘 MASTODON START` +
         ` | country=${country}` +
         ` | limit=${limit}` +
+        ` | page=${firstPage ? "FIRST" : "CONTINUE"}` +
+        ` | activeCursors=${Object.keys(cursorMap).length}` +
+        ` | previouslyReturned=${previouslyReturned.size}` +
         ` | tags=${hashtags.join(",")}`
     );
+
+
+    // ========================================================
+    // BUILD REQUESTS
+    // ========================================================
+
+    const requestTags = [];
+
+
+    for (
+        const hashtag
+        of hashtags
+    ) {
+
+        /*
+         * On later pages an exhausted hashtag must NOT restart
+         * from page 1.
+         */
+        if (
+            !firstPage &&
+            !Object.prototype.hasOwnProperty.call(
+                cursorMap,
+                hashtag
+            )
+        ) {
+
+            console.log(
+                `⏭️ MASTODON TAG EXHAUSTED` +
+                ` | tag=${hashtag}`
+            );
+
+            continue;
+        }
+
+
+        requestTags.push(
+            hashtag
+        );
+    }
 
 
     // ========================================================
@@ -4071,18 +4450,30 @@ async function fetchMastodonVlogs(
 
     const responses =
         await Promise.all(
-            hashtags.map(
+            requestTags.map(
                 hashtag =>
                     fetchMastodonHashtag(
-    host,
-    hashtag,
-    cursor
-)
+                        host,
+                        hashtag,
+                        firstPage
+                            ? null
+                            : cursorMap[hashtag]
+                    )
             )
         );
 
 
+    // ========================================================
+    // BUILD NEXT PER-HASHTAG CURSORS
+    // ========================================================
+
+    const nextCursorMap = {};
+
+
     let authRestrictedInstances =
+        0;
+
+    let searchesSuccessful =
         0;
 
 
@@ -4094,7 +4485,35 @@ async function fetchMastodonVlogs(
         if (
             result.authRequired
         ) {
+
             authRestrictedInstances++;
+        }
+
+
+        if (
+            result.status >= 200 &&
+            result.status < 300
+        ) {
+
+            searchesSuccessful++;
+        }
+
+
+        /*
+         * Only keep a hashtag active if its own cursor
+         * actually moved.
+         */
+        if (
+            result.status >= 200 &&
+            result.status < 300 &&
+            result.hasMore &&
+            result.nextMaxId
+        ) {
+
+            nextCursorMap[
+                result.hashtag
+            ] =
+                result.nextMaxId;
         }
     }
 
@@ -4128,22 +4547,27 @@ async function fetchMastodonVlogs(
         new Map();
 
 
+    let oldPageDuplicates =
+        0;
+
+    let samePageDuplicates =
+        0;
+
+
     for (
         const status
         of allStatuses
     ) {
 
-        if (
-            !status?.id
-        ) {
+        if (!status?.id) {
             continue;
         }
 
 
         /*
-         * Same post multiple hashtags me aa sakta hai.
+         * URI is preferable because same post may occur under
+         * several hashtags.
          */
-
         const key =
             cleanText(
                 status?.uri
@@ -4161,17 +4585,47 @@ async function fetchMastodonVlogs(
         }
 
 
+        // ----------------------------------------------------
+        // PREVIOUS PAGE
+        // ----------------------------------------------------
+
         if (
-            !uniqueMap.has(
+            previouslyReturned.has(
                 key
             )
         ) {
 
-            uniqueMap.set(
-                key,
-                status
+            oldPageDuplicates++;
+
+            console.log(
+                `♻️ MASTODON OLD PAGE SKIP` +
+                ` | id=${status?.id || "unknown"}`
             );
+
+            continue;
         }
+
+
+        // ----------------------------------------------------
+        // CURRENT PAGE
+        // ----------------------------------------------------
+
+        if (
+            uniqueMap.has(
+                key
+            )
+        ) {
+
+            samePageDuplicates++;
+
+            continue;
+        }
+
+
+        uniqueMap.set(
+            key,
+            status
+        );
     }
 
 
@@ -4183,27 +4637,10 @@ async function fetchMastodonVlogs(
 
     console.log(
         `🐘 MASTODON UNIQUE` +
-        ` | statuses=${uniqueStatuses.length}`
+        ` | statuses=${uniqueStatuses.length}` +
+        ` | oldDuplicates=${oldPageDuplicates}` +
+        ` | samePageDuplicates=${samePageDuplicates}`
     );
-
-    let nextCursor = null;
-
-for (const status of uniqueStatuses) {
-
-    const id =
-        String(status?.id || "").trim();
-
-    if (!/^\d+$/.test(id)) {
-        continue;
-    }
-
-    if (
-        nextCursor === null ||
-        BigInt(id) < BigInt(nextCursor)
-    ) {
-        nextCursor = id;
-    }
-}
 
 
     // ========================================================
@@ -4236,12 +4673,11 @@ for (const status of uniqueStatuses) {
         try {
 
             // =================================================
-            // SENSITIVE CONTENT
+            // SENSITIVE
             // =================================================
 
             if (
-                status?.sensitive ===
-                true
+                status?.sensitive === true
             ) {
 
                 sensitiveBlocked++;
@@ -4251,12 +4687,11 @@ for (const status of uniqueStatuses) {
 
 
             // =================================================
-            // BOT ACCOUNT
+            // BOT
             // =================================================
 
             if (
-                status?.account?.bot ===
-                true
+                status?.account?.bot === true
             ) {
 
                 botsBlocked++;
@@ -4266,7 +4701,7 @@ for (const status of uniqueStatuses) {
 
 
             // =================================================
-            // VIDEO ATTACHMENT
+            // VIDEO
             // =================================================
 
             const attachments =
@@ -4276,12 +4711,6 @@ for (const status of uniqueStatuses) {
                     ? status.media_attachments
                     : [];
 
-
-            /*
-             * Proper video only.
-             *
-             * gifv intentionally exclude.
-             */
 
             const video =
                 attachments.find(
@@ -4296,8 +4725,7 @@ for (const status of uniqueStatuses) {
 
 
                         return (
-                            type ===
-                                "video" &&
+                            type === "video" &&
                             (
                                 media?.url ||
                                 media?.remote_url
@@ -4316,7 +4744,7 @@ for (const status of uniqueStatuses) {
 
 
             // =================================================
-            // POST TEXT
+            // TEXT
             // =================================================
 
             const description =
@@ -4354,16 +4782,6 @@ for (const status of uniqueStatuses) {
                     : [];
 
 
-            /*
-             * postText:
-             *
-             * Actual post ko vlog classify karne ke liye.
-             *
-             * Account bio intentionally yahan include nahi hai,
-             * kyunki creator ke bio ki wajah se genuine vlog ka
-             * score distort nahi hona chahiye.
-             */
-
             const postText =
                 [
                     description,
@@ -4378,20 +4796,6 @@ for (const status of uniqueStatuses) {
                     )
                     .trim();
 
-
-            /*
-             * moderationText:
-             *
-             * Hard-block + commercial detection ke liye
-             * account bio bhi include karenge.
-             *
-             * Example:
-             * post innocent ho sakta hai lekin account bio:
-             *
-             * "Car Rental | Book Now | WhatsApp..."
-             *
-             * ho sakta hai.
-             */
 
             const moderationText =
                 [
@@ -4410,7 +4814,7 @@ for (const status of uniqueStatuses) {
 
 
             // =================================================
-            // HARD NON-VLOG / UNWANTED CONTENT
+            // HARD BLOCK
             // =================================================
 
             if (
@@ -4436,7 +4840,7 @@ for (const status of uniqueStatuses) {
 
 
             // =================================================
-            // COMMERCIAL / BUSINESS PROMOTION FILTER
+            // COMMERCIAL
             // =================================================
 
             const commercialScore =
@@ -4444,16 +4848,6 @@ for (const status of uniqueStatuses) {
                     moderationText
                 );
 
-
-            /*
-             * IMPORTANT:
-             *
-             * >= 4 = strong commercial/business evidence.
-             *
-             * Threshold ko bahut low nahi rakhenge,
-             * because genuine creators ke bio me bhi
-             * website/contact information ho sakti hai.
-             */
 
             if (
                 commercialScore >= 4
@@ -4486,13 +4880,6 @@ for (const status of uniqueStatuses) {
                     tags
                 );
 
-
-            /*
-             * Generic travel/food/random video ko sirf broad
-             * hashtag ki wajah se accept nahi karenge.
-             *
-             * Genuine vlog evidence hona chahiye.
-             */
 
             if (
                 vlogScore < 40
@@ -4529,16 +4916,8 @@ for (const status of uniqueStatuses) {
 
 
             // =================================================
-            // COUNTRY SCORE
+            // COUNTRY
             // =================================================
-
-            /*
-             * Country HARD FILTER nahi hai.
-             *
-             * Local content ko ranking preference milegi.
-             * Local inventory kam hui to genuine global
-             * vlogs fallback me aa sakte hain.
-             */
 
             const countryConfidence =
                 calculateMastodonCountryScore(
@@ -4636,7 +5015,7 @@ for (const status of uniqueStatuses) {
 
 
             // =================================================
-            // UNIQUE ID
+            // ID
             // =================================================
 
             const statusId =
@@ -4649,10 +5028,6 @@ for (const status of uniqueStatuses) {
                 continue;
             }
 
-
-            // =================================================
-            // ORIGINAL POST URL
-            // =================================================
 
             const originalPostUrl =
                 cleanText(
@@ -4673,24 +5048,28 @@ for (const status of uniqueStatuses) {
                 uniqueId:
                     `mastodon_${statusId}`,
 
+                /*
+                 * Internal pagination/dedupe key.
+                 * API response can contain it; Android can
+                 * simply ignore unknown fields if not modeled.
+                 */
+                paginationKey:
+                    cleanText(
+                        status?.uri
+                    ) ||
+                    cleanText(
+                        status?.url
+                    ) ||
+                    statusId,
+
                 provider:
                     "mastodon",
-
-
-                // ---------------------------------------------
-                // Original remote media
-                // ---------------------------------------------
 
                 videoUrl,
 
                 thumbnailUrl,
 
                 originalPostUrl,
-
-
-                // ---------------------------------------------
-                // Content
-                // ---------------------------------------------
 
                 title:
                     description
@@ -4704,7 +5083,6 @@ for (const status of uniqueStatuses) {
                             180
                         ),
 
-
                 description:
                     postText
                         .replace(
@@ -4717,11 +5095,6 @@ for (const status of uniqueStatuses) {
                             1000
                         ),
 
-
-                // ---------------------------------------------
-                // Creator attribution
-                // ---------------------------------------------
-
                 creatorId,
 
                 creatorName,
@@ -4733,24 +5106,13 @@ for (const status of uniqueStatuses) {
                     ) ||
                     null,
 
-
-                // ---------------------------------------------
-                // Language / Country
-                // ---------------------------------------------
-
                 language:
                     detectedLanguage,
-
 
                 detectedCountry:
                     countryConfidence >= 60
                         ? country
                         : null,
-
-
-                // ---------------------------------------------
-                // Engagement
-                // ---------------------------------------------
 
                 views:
                     0,
@@ -4761,11 +5123,6 @@ for (const status of uniqueStatuses) {
 
                 shares,
 
-
-                // ---------------------------------------------
-                // Date
-                // ---------------------------------------------
-
                 publishedAt:
                     status?.created_at
                         ? (
@@ -4774,11 +5131,6 @@ for (const status of uniqueStatuses) {
                             ) || 0
                         )
                         : 0,
-
-
-                // ---------------------------------------------
-                // Internal ranking scores
-                // ---------------------------------------------
 
                 countryConfidence:
                     Math.min(
@@ -4789,7 +5141,6 @@ for (const status of uniqueStatuses) {
                         100
                     ),
 
-
                 vlogScore:
                     Math.min(
                         Math.max(
@@ -4798,7 +5149,6 @@ for (const status of uniqueStatuses) {
                         ),
                         100
                     ),
-
 
                 engagementScore
             });
@@ -4816,17 +5166,11 @@ for (const status of uniqueStatuses) {
 
 
     // ========================================================
-    // SORT CANDIDATES
+    // SORT
     // ========================================================
 
     candidates.sort(
         (a, b) => {
-
-            /*
-             * 1. Country relevance
-             *
-             * Local first.
-             */
 
             if (
                 b.countryConfidence !==
@@ -4840,10 +5184,6 @@ for (const status of uniqueStatuses) {
             }
 
 
-            /*
-             * 2. Vlog quality
-             */
-
             if (
                 b.vlogScore !==
                 a.vlogScore
@@ -4855,10 +5195,6 @@ for (const status of uniqueStatuses) {
                 );
             }
 
-
-            /*
-             * 3. Engagement
-             */
 
             if (
                 b.engagementScore !==
@@ -4872,10 +5208,6 @@ for (const status of uniqueStatuses) {
             }
 
 
-            /*
-             * 4. Freshness
-             */
-
             return (
                 b.publishedAt -
                 a.publishedAt
@@ -4885,7 +5217,7 @@ for (const status of uniqueStatuses) {
 
 
     // ========================================================
-    // COUNTRY TIERS
+    // TIERS
     // ========================================================
 
     const strongCountry =
@@ -4910,23 +5242,6 @@ for (const status of uniqueStatuses) {
         );
 
 
-    /*
-     * IMPORTANT:
-     *
-     * Country hard-filter nahi hai.
-     *
-     * Priority:
-     *
-     * strong local
-     *      ↓
-     * possible local
-     *      ↓
-     * genuine global fallback
-     *
-     * Agar requested=10 hai aur sirf 6 genuine
-     * candidates mile, to 6 hi return honge.
-     */
-
     const videos =
         [
             ...strongCountry,
@@ -4940,6 +5255,75 @@ for (const status of uniqueStatuses) {
 
 
     // ========================================================
+    // SEEN STATE
+    // ========================================================
+
+    /*
+     * IMPORTANT:
+     * Only videos ACTUALLY returned to Android are remembered.
+     */
+
+    const returnedKeys =
+        videos
+            .map(
+                item =>
+                    cleanText(
+                        item?.paginationKey
+                    )
+            )
+            .filter(Boolean);
+
+
+    const seenForNextPage =
+        [
+            ...previouslyReturned,
+            ...returnedKeys
+        ]
+            .filter(
+                (
+                    value,
+                    index,
+                    array
+                ) =>
+                    array.indexOf(value) ===
+                    index
+            )
+            .slice(-200);
+
+
+    // Remove internal field before response.
+    for (
+        const item
+        of videos
+    ) {
+
+        delete item.paginationKey;
+    }
+
+
+    // ========================================================
+    // NEXT CURSOR
+    // ========================================================
+
+    const hasMore =
+        Object.keys(
+            nextCursorMap
+        ).length > 0;
+
+
+    const nextCursor =
+        hasMore
+            ? encodeMastodonCursor({
+                cursors:
+                    nextCursorMap,
+
+                seen:
+                    seenForNextPage
+            })
+            : null;
+
+
+    // ========================================================
     // DEBUG
     // ========================================================
 
@@ -4949,9 +5333,17 @@ for (const status of uniqueStatuses) {
             1,
 
         hashtagsAttempted:
-            hashtags.length,
+            requestTags.length,
+
+        hashtagsSuccessful:
+            searchesSuccessful,
 
         hashtags,
+
+        activeHashtags:
+            Object.keys(
+                nextCursorMap
+            ).length,
 
         authRestrictedInstances,
 
@@ -4960,6 +5352,10 @@ for (const status of uniqueStatuses) {
 
         uniqueStatuses:
             uniqueStatuses.length,
+
+        oldPageDuplicates,
+
+        samePageDuplicates,
 
         videoStatuses,
 
@@ -5000,32 +5396,33 @@ for (const status of uniqueStatuses) {
     console.log(
         `🐘 MASTODON DONE` +
         ` | country=${country}` +
+        ` | page=${firstPage ? "FIRST" : "CONTINUE"}` +
+        ` | attempted=${requestTags.length}` +
+        ` | successful=${searchesSuccessful}` +
         ` | raw=${allStatuses.length}` +
         ` | unique=${uniqueStatuses.length}` +
         ` | video=${videoStatuses}` +
-        ` | commercialBlocked=${commercialBlocked}` +
-        ` | hardBlocked=${hardBlocked}` +
-        ` | lowVlog=${lowVlogScore}` +
         ` | vlogPassed=${vlogPassed}` +
         ` | candidates=${candidates.length}` +
-        ` | strongCountry=${strongCountry.length}` +
-        ` | possibleCountry=${possibleCountry.length}` +
-        ` | weakCountry=${weakCountry.length}` +
-        ` | returned=${videos.length}`
+        ` | returned=${videos.length}` +
+        ` | remembered=${seenForNextPage.length}` +
+        ` | hasMore=${hasMore}` +
+        ` | activeHashtags=${Object.keys(nextCursorMap).length}`
     );
 
 
     return {
-    videos,
-    debug,
-    tiers,
 
-    nextCursor,
+        videos,
 
-    hasMore:
-        nextCursor !== null &&
-        uniqueStatuses.length > 0
-};
+        debug,
+
+        tiers,
+
+        nextCursor,
+
+        hasMore
+    };
 }
 
 
