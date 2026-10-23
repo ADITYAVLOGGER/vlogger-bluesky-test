@@ -517,52 +517,40 @@ function decodeBlueskyCursor(cursor) {
 
 async function searchPosts(
     query,
-    cursor = null
+    until = null
 ) {
 
-    // ========================================================
-    // QUERY PARAMETERS
-    // ========================================================
-
     const params = {
-
-        q:
-            query,
-
-        sort:
-            "latest",
-
-        limit:
-            SEARCH_LIMIT
+        q: query,
+        sort: "latest",
+        limit: SEARCH_LIMIT
     };
 
 
     /*
-     * First request me cursor nahi bhejna.
+     * IMPORTANT:
      *
-     * Next request me Bluesky se mila hua
-     * exact cursor bhejna hai.
+     * Bluesky native cursor use NAHI karna.
+     *
+     * Public API first page works,
+     * lekin native cursor requests 403 de rahi hain.
+     *
+     * Next page ke liye previous search ke
+     * oldest post se pehle search karenge.
      */
-    if (cursor) {
-
-        params.cursor =
-            String(cursor);
+    if (until) {
+        params.until = String(until);
     }
 
 
     console.log(
         `🔎 BLUESKY SEARCH` +
         ` | query=${query}` +
-        ` | cursor=${cursor ? "YES" : "FIRST"}`
+        ` | until=${until || "LATEST"}`
     );
 
 
     try {
-
-        // ====================================================
-        // IMPORTANT:
-        // Existing working blueskyGet() architecture preserve.
-        // ====================================================
 
         const response =
             await blueskyGet(
@@ -570,10 +558,6 @@ async function searchPosts(
                 params
             );
 
-
-        // ====================================================
-        // READ RESPONSE
-        // ====================================================
 
         const responseText =
             await response.text();
@@ -583,43 +567,32 @@ async function searchPosts(
         // HTTP ERROR
         // ====================================================
 
-        if (
-            !response.ok
-        ) {
+        if (!response.ok) {
 
             console.log(
                 `❌ BLUESKY SEARCH HTTP ERROR` +
                 ` | query=${query}` +
                 ` | status=${response.status}` +
+                ` | until=${until || "LATEST"}` +
                 ` | body=${responseText.slice(0, 300)}`
             );
 
 
             return {
-
                 query,
-
-                status:
-                    response.status,
-
+                status: response.status,
                 posts: [],
-
-                /*
-                 * Failed request par cursor lose
-                 * nahi karna.
-                 */
-                nextCursor:
-                    cursor || null
+                nextUntil: until || null,
+                hasMore: false
             };
         }
 
 
         // ====================================================
-        // PARSE JSON
+        // JSON
         // ====================================================
 
         let data;
-
 
         try {
 
@@ -638,40 +611,88 @@ async function searchPosts(
 
 
             return {
-
                 query,
-
-                status:
-                    response.status,
-
+                status: response.status,
                 posts: [],
-
-                nextCursor:
-                    cursor || null
+                nextUntil: until || null,
+                hasMore: false
             };
         }
 
 
-        // ====================================================
-        // POSTS
-        // ====================================================
-
         const posts =
-            Array.isArray(
-                data?.posts
-            )
+            Array.isArray(data?.posts)
                 ? data.posts
                 : [];
 
 
         // ====================================================
-        // NEXT CURSOR
+        // FIND OLDEST POST
         // ====================================================
 
-        const nextCursor =
-            cleanText(
-                data?.cursor
-            ) || null;
+        let oldestTimestamp = null;
+
+
+        for (const post of posts) {
+
+            /*
+             * Prefer indexedAt because search ordering
+             * is based on indexed/searchable records.
+             *
+             * Fallback to record.createdAt.
+             */
+
+            const rawDate =
+                cleanText(post?.indexedAt) ||
+                cleanText(post?.record?.createdAt);
+
+
+            if (!rawDate) {
+                continue;
+            }
+
+
+            const time =
+                Date.parse(rawDate);
+
+
+            if (!Number.isFinite(time)) {
+                continue;
+            }
+
+
+            if (
+                oldestTimestamp === null ||
+                time < oldestTimestamp
+            ) {
+
+                oldestTimestamp = time;
+            }
+        }
+
+
+        /*
+         * Move boundary slightly backwards so the next
+         * request doesn't sit on exactly the same timestamp.
+         */
+        const nextUntil =
+            oldestTimestamp !== null
+                ? new Date(
+                    oldestTimestamp - 1
+                ).toISOString()
+                : null;
+
+
+        /*
+         * SEARCH_LIMIT results aaye hain to older results
+         * likely available hain.
+         *
+         * Kam results aaye => is query ko exhausted
+         * consider kar sakte hain.
+         */
+        const hasMore =
+            posts.length >= SEARCH_LIMIT &&
+            nextUntil !== null;
 
 
         console.log(
@@ -679,20 +700,17 @@ async function searchPosts(
             ` | query=${query}` +
             ` | status=${response.status}` +
             ` | posts=${posts.length}` +
-            ` | nextCursor=${nextCursor ? "YES" : "NO"}`
+            ` | nextUntil=${nextUntil || "NONE"}` +
+            ` | hasMore=${hasMore}`
         );
 
 
         return {
-
             query,
-
-            status:
-                response.status,
-
+            status: response.status,
             posts,
-
-            nextCursor
+            nextUntil,
+            hasMore
         };
 
 
@@ -706,20 +724,11 @@ async function searchPosts(
 
 
         return {
-
             query,
-
-            status:
-                0,
-
+            status: 0,
             posts: [],
-
-            /*
-             * Network/error case me current cursor
-             * preserve karenge.
-             */
-            nextCursor:
-                cursor || null
+            nextUntil: until || null,
+            hasMore: false
         };
     }
 }
@@ -1692,94 +1701,91 @@ async function fetchBlueskyVlogs(
             countryCode
         );
 
+
     // ========================================================
-// DECODE PAGINATION STATE
-// ========================================================
+    // DECODE OUR OWN PAGINATION STATE
+    // ========================================================
 
-const decodedState =
-    decodeBlueskyCursor(
-        encodedCursor
+    const decodedState =
+        decodeBlueskyCursor(
+            encodedCursor
+        );
+
+
+    /*
+     * NEW FORMAT:
+     *
+     * {
+     *     untils: {
+     *         "india vlog": "2026-10-20T10:20:30.000Z",
+     *         "hindi vlog": "2026-10-18T08:15:00.000Z"
+     *     },
+     *
+     *     seen: [
+     *         "at://...",
+     *         "at://..."
+     *     ]
+     * }
+     */
+
+
+    const untilMap =
+        decodedState &&
+        typeof decodedState === "object" &&
+        !Array.isArray(decodedState) &&
+        decodedState.untils &&
+        typeof decodedState.untils === "object" &&
+        !Array.isArray(decodedState.untils)
+            ? decodedState.untils
+            : {};
+
+
+    const previouslyReturned =
+        new Set(
+            decodedState &&
+            typeof decodedState === "object" &&
+            !Array.isArray(decodedState) &&
+            Array.isArray(decodedState.seen)
+                ? decodedState.seen
+                    .map(
+                        id =>
+                            cleanText(id)
+                    )
+                    .filter(Boolean)
+                : []
+        );
+
+
+    /*
+     * First page:
+     *
+     * Sab queries active hain.
+     *
+     * Later pages:
+     *
+     * Sirf woh queries active rahengi jinke
+     * paas previous page se nextUntil hai.
+     */
+
+    const firstPage =
+        !encodedCursor;
+
+
+    const nextUntilMap = {};
+
+
+    console.log(
+        `🦋 BLUESKY TIME PAGINATION` +
+        ` | country=${countryCode}` +
+        ` | page=${firstPage ? "FIRST" : "CONTINUE"}` +
+        ` | activeUntil=${Object.keys(untilMap).length}` +
+        ` | previouslyReturned=${previouslyReturned.size}`
     );
 
-
-/*
- * NEW cursor format:
- *
- * {
- *     cursors: {
- *         "india vlog": "...",
- *         "hindi vlog": "...",
- *         ...
- *     },
- *
- *     seen: [
- *         "at://...",
- *         "at://..."
- *     ]
- * }
- *
- * Backward compatibility:
- * purana cursor agar direct query-map hai,
- * to usko bhi support karenge.
- */
-
-const isNewCursorFormat =
-    decodedState &&
-    typeof decodedState === "object" &&
-    !Array.isArray(decodedState) &&
-    (
-        decodedState.cursors ||
-        decodedState.seen
-    );
-
-
-const cursorMap =
-    isNewCursorFormat
-        ? (
-            decodedState.cursors &&
-            typeof decodedState.cursors === "object" &&
-            !Array.isArray(decodedState.cursors)
-                ? decodedState.cursors
-                : {}
-        )
-        : decodedState;
-
-
-const previouslyReturned =
-    new Set(
-        isNewCursorFormat &&
-        Array.isArray(decodedState.seen)
-            ? decodedState.seen
-                .map(
-                    id =>
-                        cleanText(id)
-                )
-                .filter(Boolean)
-            : []
-    );
-
-
-const nextCursorMap = {
-    ...cursorMap
-};
-
-
-console.log(
-    `🦋 BLUESKY PAGINATION` +
-    ` | country=${countryCode}` +
-    ` | incomingCursor=${encodedCursor ? "YES" : "FIRST"}` +
-    ` | queryCursors=${Object.keys(cursorMap).length}` +
-    ` | previouslyReturned=${previouslyReturned.size}`
-);
-
-console.log(
-    `🦋 BLUESKY PAGINATION` +
-    ` | country=${countryCode}` +
-    ` | incomingCursor=${encodedCursor ? "YES" : "FIRST"}`
-);
 
     const unique =
         new Map();
+
 
     const debug = {
 
@@ -1812,82 +1818,118 @@ console.log(
         of queries
     ) {
 
-        debug.searchesAttempted++;
-
-        const queryCursor =
-    cursorMap[query] ||
-    null;
-
-
-const search =
-    await searchPosts(
-        query,
-        queryCursor
-    );
-
-
-/*
- * Har query ka apna Bluesky cursor.
- */
-if (search.nextCursor) {
-
-    nextCursorMap[query] =
-        search.nextCursor;
-
-} else {
-
-    /*
-     * null means is query me currently
-     * next page available nahi hai.
-     */
-    delete nextCursorMap[query];
-}
+        /*
+         * Later page par agar query exhausted thi,
+         * usko dobara latest se start nahi karna.
+         */
 
         if (
-    search.status === 200
-) {
-    debug.searchesSuccessful++;
-}
+            !firstPage &&
+            !Object.prototype.hasOwnProperty.call(
+                untilMap,
+                query
+            )
+        ) {
 
-debug.postsReceived +=
-    search.posts.length;
+            console.log(
+                `⏭️ BLUESKY QUERY EXHAUSTED` +
+                ` | query=${query}`
+            );
 
-for (
-    const post
-    of search.posts
-) {
+            continue;
+        }
+
+
+        debug.searchesAttempted++;
+
+
+        const queryUntil =
+            firstPage
+                ? null
+                : untilMap[query];
+
+
+        const search =
+            await searchPosts(
+                query,
+                queryUntil
+            );
+
+
+        // ====================================================
+        // SUCCESS
+        // ====================================================
+
+        if (
+            search.status === 200
+        ) {
+
+            debug.searchesSuccessful++;
+        }
+
+
+        debug.postsReceived +=
+            search.posts.length;
+
+
+        /*
+         * Successful search + older results available:
+         * save our own timestamp boundary.
+         */
+
+        if (
+            search.status === 200 &&
+            search.hasMore &&
+            search.nextUntil
+        ) {
+
+            nextUntilMap[query] =
+                search.nextUntil;
+        }
+
+
+        // ====================================================
+        // POSTS
+        // ====================================================
+
+        for (
+            const post
+            of search.posts
+        ) {
 
             const id =
                 cleanText(
                     post?.uri
                 );
 
+
             if (!id) {
                 continue;
             }
 
-    // ------------------------------------------------
-// PREVIOUS PAGE DUPLICATE
-// ------------------------------------------------
 
-if (
-    previouslyReturned.has(id)
-) {
+            // ------------------------------------------------
+            // PREVIOUS PAGE DUPLICATE
+            // ------------------------------------------------
 
-    debug.duplicates++;
+            if (
+                previouslyReturned.has(id)
+            ) {
 
-    console.log(
-        `♻️ BLUESKY OLD PAGE SKIP` +
-        ` | id=${id}` +
-        ` | query=${query}`
-    );
+                debug.duplicates++;
 
-    continue;
-}
+                console.log(
+                    `♻️ BLUESKY OLD PAGE SKIP` +
+                    ` | id=${id}` +
+                    ` | query=${query}`
+                );
+
+                continue;
+            }
 
 
             // ------------------------------------------------
-            // DUPLICATE
+            // SAME REQUEST DUPLICATE
             // ------------------------------------------------
 
             if (
@@ -1909,6 +1951,7 @@ if (
                     post
                 );
 
+
             if (!video) {
 
                 debug.noVideo++;
@@ -1916,17 +1959,23 @@ if (
                 continue;
             }
 
+
             debug.videosFound++;
 
 
             // ------------------------------------------------
-            // HARD BLOCK
+            // TEXT
             // ------------------------------------------------
 
             const text =
                 getPostText(
                     post
                 );
+
+
+            // ------------------------------------------------
+            // HARD BLOCK
+            // ------------------------------------------------
 
             if (
                 containsBlockedContent(
@@ -1949,13 +1998,6 @@ if (
                     post
                 );
 
-            /*
-             * High recall:
-             *
-             * Literal "vlog" required nahi hai.
-             * Lifestyle/personal content bhi pass
-             * kar sakta hai.
-             */
 
             if (
                 vlogScore < 30
@@ -1965,6 +2007,7 @@ if (
 
                 continue;
             }
+
 
             debug.vlogPassed++;
 
@@ -1981,6 +2024,7 @@ if (
                     query
                 );
 
+
             unique.set(
                 id,
                 candidate
@@ -1988,30 +2032,25 @@ if (
         }
 
 
-        /*
-         * Ranking ke liye enough extra candidates
-         * mil gaye to unnecessary API searches stop.
-         */
+        // ====================================================
+        // ENOUGH CANDIDATES
+        // ====================================================
 
         if (
             unique.size >=
             requestedLimit * 3
         ) {
+
             break;
         }
 
-
-        /*
-         * Search endpoint ko unnecessarily
-         * hammer nahi karna.
-         */
 
         await sleep(100);
     }
 
 
     // ========================================================
-    // BLUESKY RANKING
+    // RANK
     // ========================================================
 
     const ranked =
@@ -2021,9 +2060,7 @@ if (
             .sort(
                 (a, b) => {
 
-                    // ----------------------------------------
                     // 1. VLOG QUALITY
-                    // ----------------------------------------
 
                     if (
                         b.vlogScore !==
@@ -2037,9 +2074,7 @@ if (
                     }
 
 
-                    // ----------------------------------------
-                    // 2. COUNTRY RELEVANCE
-                    // ----------------------------------------
+                    // 2. COUNTRY
 
                     if (
                         b.countryScore !==
@@ -2053,9 +2088,7 @@ if (
                     }
 
 
-                    // ----------------------------------------
                     // 3. ENGAGEMENT
-                    // ----------------------------------------
 
                     return (
                         b.engagementScore -
@@ -2091,15 +2124,9 @@ if (
         );
 
 
-    /*
-     * Strong country first.
-     *
-     * Agar strong local inventory kam hai,
-     * possible + weak/global content se fill.
-     *
-     * Target complete nahi hua to [] nahi.
-     * Jitna mila utna return.
-     */
+    // ========================================================
+    // FINAL
+    // ========================================================
 
     const final =
         [
@@ -2113,121 +2140,98 @@ if (
             );
 
 
-    // return {
-
-    //     debug,
-
-    //     tiers: {
-
-    //         strongCountry:
-    //             strongCountry.length,
-
-    //         possibleCountry:
-    //             possibleCountry.length,
-
-    //         weakCountry:
-    //             weakCountry.length
-    //     },
-
-    //     videos:
-    //         final
-    // };
     // ========================================================
-// BUILD NEXT PAGINATION STATE
-// ========================================================
+    // REMEMBER RETURNED IDs
+    // ========================================================
 
-const hasMore =
-    Object.keys(
-        nextCursorMap
-    ).length > 0;
-
-
-/*
- * Sirf ACTUALLY RETURNED videos ko seen mark karna hai.
- *
- * Filtered/rejected candidates ko seen nahi karenge.
- */
-
-const returnedIds =
-    final
-        .map(
-            item =>
-                cleanText(
-                    item?.id
-                )
-        )
-        .filter(Boolean);
+    const returnedIds =
+        final
+            .map(
+                item =>
+                    cleanText(
+                        item?.id
+                    )
+            )
+            .filter(Boolean);
 
 
-/*
- * Previous pages + current response.
- *
- * Last 200 IDs enough hain.
- * Unlimited IDs cursor me rakhne se URL bahut bada
- * hota jayega.
- */
-
-const seenForNextPage =
-    [
-        ...previouslyReturned,
-        ...returnedIds
-    ]
-        .filter(
-            (
-                id,
-                index,
-                array
-            ) =>
-                array.indexOf(id) ===
-                index
-        )
-        .slice(-200);
+    const seenForNextPage =
+        [
+            ...previouslyReturned,
+            ...returnedIds
+        ]
+            .filter(
+                (
+                    id,
+                    index,
+                    array
+                ) =>
+                    array.indexOf(id) ===
+                    index
+            )
+            .slice(-200);
 
 
-const nextCursor =
-    hasMore
-        ? encodeBlueskyCursor({
-            cursors:
-                nextCursorMap,
+    // ========================================================
+    // HAS MORE
+    // ========================================================
 
-            seen:
-                seenForNextPage
-        })
-        : null;
+    const hasMore =
+        Object.keys(
+            nextUntilMap
+        ).length > 0;
 
 
-console.log(
-    `🦋 BLUESKY PAGINATION DONE` +
-    ` | returned=${final.length}` +
-    ` | remembered=${seenForNextPage.length}` +
-    ` | hasMore=${hasMore}` +
-    ` | activeQueries=${Object.keys(nextCursorMap).length}`
-);
+    // ========================================================
+    // OUR OWN CURSOR
+    // ========================================================
+
+    const nextCursor =
+        hasMore
+            ? encodeBlueskyCursor({
+
+                untils:
+                    nextUntilMap,
+
+                seen:
+                    seenForNextPage
+
+            })
+            : null;
 
 
-return {
+    console.log(
+        `🦋 BLUESKY TIME PAGINATION DONE` +
+        ` | returned=${final.length}` +
+        ` | remembered=${seenForNextPage.length}` +
+        ` | hasMore=${hasMore}` +
+        ` | activeQueries=${Object.keys(nextUntilMap).length}`
+    );
 
-    debug,
 
-    tiers: {
+    return {
 
-        strongCountry:
-            strongCountry.length,
+        debug,
 
-        possibleCountry:
-            possibleCountry.length,
+        tiers: {
 
-        weakCountry:
-            weakCountry.length
-    },
+            strongCountry:
+                strongCountry.length,
 
-    videos:
-        final,
+            possibleCountry:
+                possibleCountry.length,
 
-    nextCursor,
+            weakCountry:
+                weakCountry.length
+        },
 
-    hasMore
-};
+        videos:
+            final,
+
+        nextCursor,
+
+        hasMore
+    };
 }
 
 
