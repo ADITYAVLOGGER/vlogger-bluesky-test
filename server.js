@@ -541,10 +541,196 @@ const hasMore =
     }
 }
 
+// ============================================================
+// BLUESKY VIDEO FEED DISCOVERY
+// ============================================================
+
+const BLUESKY_VIDEO_FEED =
+    "at://did:plc:tenurhgjptubkk5zf5qhi3og/app.bsky.feed.generator/thevids";
+
+
+async function fetchBlueskyVideoFeed(
+    cursor = null,
+    limit = 50
+) {
+
+    const params = {
+
+        feed:
+            BLUESKY_VIDEO_FEED,
+
+        limit:
+            Math.min(
+                Math.max(
+                    Number(limit) || 50,
+                    1
+                ),
+                100
+            )
+    };
+
+
+    if (cursor) {
+
+        params.cursor =
+            String(cursor);
+    }
+
+
+    console.log(
+        `🎥 BLUESKY VIDEO FEED REQUEST` +
+        ` | cursor=${cursor ? "CONTINUE" : "FIRST"}` +
+        ` | limit=${params.limit}`
+    );
+
+
+    try {
+
+        const response =
+            await blueskyGet(
+                "app.bsky.feed.getFeed",
+                params
+            );
+
+
+        const responseText =
+            await response.text();
+
+
+        if (!response.ok) {
+
+            console.log(
+                `❌ BLUESKY VIDEO FEED HTTP ERROR` +
+                ` | status=${response.status}` +
+                ` | body=${responseText.slice(0, 300)}`
+            );
+
+
+            return {
+
+                status:
+                    response.status,
+
+                posts: [],
+
+                cursor:
+                    null,
+
+                hasMore:
+                    false
+            };
+        }
+
+
+        let data;
+
+
+        try {
+
+            data =
+                JSON.parse(
+                    responseText
+                );
+
+        } catch (error) {
+
+            console.log(
+                `❌ BLUESKY VIDEO FEED INVALID JSON` +
+                ` | body=${responseText.slice(0, 300)}`
+            );
+
+
+            return {
+
+                status:
+                    response.status,
+
+                posts: [],
+
+                cursor:
+                    null,
+
+                hasMore:
+                    false
+            };
+        }
+
+
+        const feed =
+            Array.isArray(
+                data?.feed
+            )
+                ? data.feed
+                : [];
+
+
+        const posts =
+            feed
+                .map(
+                    item =>
+                        item?.post
+                )
+                .filter(Boolean);
+
+
+        const nextCursor =
+            cleanText(
+                data?.cursor
+            ) || null;
+
+
+        console.log(
+            `✅ BLUESKY VIDEO FEED` +
+            ` | status=${response.status}` +
+            ` | posts=${posts.length}` +
+            ` | nextCursor=${nextCursor ? "YES" : "NONE"}`
+        );
+
+
+        return {
+
+            status:
+                response.status,
+
+            posts,
+
+            cursor:
+                nextCursor,
+
+            hasMore:
+                Boolean(
+                    nextCursor
+                )
+        };
+
+
+    } catch (error) {
+
+        console.log(
+            `❌ BLUESKY VIDEO FEED FAILED` +
+            ` | error=${error?.message || error}`
+        );
+
+
+        return {
+
+            status: 0,
+
+            posts: [],
+
+            cursor: null,
+
+            hasMore: false
+        };
+    }
+}
 
 // ============================================================
 // COUNTRY SEARCH QUERIES
 // ============================================================
+
+
+
 
 function getCountryQueries(
     countryCode
