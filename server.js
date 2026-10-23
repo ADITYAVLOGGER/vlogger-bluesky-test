@@ -546,7 +546,7 @@ const hasMore =
 // ============================================================
 
 const BLUESKY_VIDEO_FEED =
-    "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/thevids";
+    "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot";
 
 async function fetchBlueskyVideoFeed(
     cursor = null,
