@@ -867,6 +867,28 @@ function containsBlockedContent(text) {
         "app demo",
 
         // ----------------------------------------------------
+// EXTERNAL VIDEO / REPOST PROMOTION
+// ----------------------------------------------------
+
+"full video on youtube",
+"watch full video on youtube",
+"watch on youtube",
+"full video on yt",
+"watch full video on yt",
+"full video on youtu.be",
+
+"subscribe to youtube",
+"subscribe on youtube",
+"subscribe to my youtube",
+
+"youtube channel",
+"youtube.com/watch",
+"youtu.be/",
+
+"x.com/",
+"twitter.com/",
+
+        // ----------------------------------------------------
         // EXPLICIT / ADULT CONTENT
         // ----------------------------------------------------
 
@@ -957,6 +979,179 @@ function containsBlockedContent(text) {
     return false;
 }
 
+function containsBlueskyJunk(
+    post
+) {
+
+    const text =
+        getPostText(post);
+
+    const value =
+        String(text || "")
+            .toLowerCase()
+            .replace(/\s+/g, " ")
+            .trim();
+
+
+    const author =
+        post?.author || {};
+
+
+    const displayName =
+        cleanText(
+            author?.displayName
+        )
+            .toLowerCase();
+
+
+    const handle =
+        cleanText(
+            author?.handle
+        )
+            .toLowerCase();
+
+
+    // ========================================================
+    // 1. OBVIOUS BOT / MIRROR ACCOUNT
+    // ========================================================
+
+    const obviousBotNames = [
+        "x bot",
+        "twitter bot",
+        "twitter mirror",
+        "x mirror"
+    ];
+
+
+    if (
+        obviousBotNames.some(
+            name =>
+                displayName === name ||
+                handle === name
+        )
+    ) {
+
+        return true;
+    }
+
+
+    // ========================================================
+    // 2. X / TWITTER STATUS MIRROR
+    // ========================================================
+
+    if (
+        /https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\/[^/\s]+\/status\/\d+/i
+            .test(value)
+    ) {
+
+        return true;
+    }
+
+
+    // ========================================================
+    // 3. MIRROR-STYLE GENERATED HASHTAGS
+    //
+    // Example:
+    // #x-marc_louvion
+    // ========================================================
+
+    if (
+        /(?:^|\s)#x-[a-z0-9_.-]+/i
+            .test(value)
+    ) {
+
+        return true;
+    }
+
+
+    // ========================================================
+    // 4. EXTERNAL FULL-VIDEO PROMOTION
+    // ========================================================
+
+    const externalPromoPatterns = [
+
+        /\bfull\s+video\s+on\s+(?:youtube|yt)\b/i,
+
+        /\bwatch\s+(?:the\s+)?full\s+video\s+on\s+(?:youtube|yt)\b/i,
+
+        /\bwatch\s+on\s+youtube\b/i,
+
+        /\bsubscribe\s+(?:to|on)\s+(?:my\s+)?youtube\b/i
+    ];
+
+
+    if (
+        externalPromoPatterns.some(
+            pattern =>
+                pattern.test(value)
+        )
+    ) {
+
+        return true;
+    }
+
+
+    // ========================================================
+    // 5. LINK-DOMINATED REPOST
+    //
+    // IMPORTANT:
+    // Normal creator with one link should NOT be blocked.
+    // Only very low-original-text posts are blocked.
+    // ========================================================
+
+    const urls =
+        value.match(
+            /https?:\/\/\S+/gi
+        ) || [];
+
+
+    if (
+        urls.length > 0
+    ) {
+
+        const withoutUrls =
+            value
+                .replace(
+                    /https?:\/\/\S+/gi,
+                    " "
+                )
+                .replace(
+                    /@[a-z0-9_.-]+/gi,
+                    " "
+                )
+                .replace(
+                    /#[a-z0-9_.-]+/gi,
+                    " "
+                )
+                .replace(
+                    /[^\p{L}\p{N}\s]/gu,
+                    " "
+                )
+                .replace(
+                    /\s+/g,
+                    " "
+                )
+                .trim();
+
+
+        /*
+         * Link + almost no original text =
+         * likely mirror/repost/promo.
+         *
+         * Genuine vlog captions with meaningful text survive.
+         */
+        if (
+            withoutUrls.length < 15
+        ) {
+
+            return true;
+        }
+    }
+
+
+    return false;
+}
+
 
 // ============================================================
 // BLUESKY VLOG SCORE
@@ -972,9 +1167,16 @@ function calculateVlogScore(post) {
         return 0;
     }
 
+
     if (
-        containsBlockedContent(text)
+        containsBlockedContent(
+            text
+        ) ||
+        containsBlueskyJunk(
+            post
+        )
     ) {
+
         return 0;
     }
 
@@ -1947,7 +2149,7 @@ async function fetchBlueskyVlogs(
         videosFound: 0,
 
         blocked: 0,
-
+junkBlocked: 0,
         vlogRejected: 0,
 
         vlogPassed: 0
@@ -2118,30 +2320,59 @@ async function fetchBlueskyVlogs(
                 );
 
 
-            // ------------------------------------------------
-            // HARD BLOCK
-            // ------------------------------------------------
+// ------------------------------------------------
+// HARD BLOCK
+// ------------------------------------------------
 
-            if (
-                containsBlockedContent(
-                    text
-                )
-            ) {
+if (
+    containsBlockedContent(
+        text
+    )
+) {
 
-                debug.blocked++;
+    debug.blocked++;
 
-                continue;
-            }
+    continue;
+}
 
 
-            // ------------------------------------------------
-            // VLOG SCORE
-            // ------------------------------------------------
+// ------------------------------------------------
+// BLUESKY JUNK / BOT / REPOST BLOCK
+// ------------------------------------------------
 
-            const vlogScore =
-                calculateVlogScore(
-                    post
-                );
+if (
+    containsBlueskyJunk(
+        post
+    )
+) {
+
+    debug.junkBlocked++;
+
+
+    console.log(
+        `🤖 BLUESKY JUNK BLOCK` +
+        ` | creator=${cleanText(
+            post?.author?.displayName
+        ) || cleanText(
+            post?.author?.handle
+        ) || "unknown"}` +
+        ` | text=${text.substring(0, 220)}`
+    );
+
+
+    continue;
+}
+
+
+// ------------------------------------------------
+// VLOG SCORE
+// ------------------------------------------------
+
+const vlogScore =
+    calculateVlogScore(
+        post
+    );
+
 
 
             if (
