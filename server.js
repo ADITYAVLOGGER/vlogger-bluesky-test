@@ -691,8 +691,11 @@ async function searchPosts(
          * consider kar sakte hain.
          */
         const hasMore =
-            posts.length >= SEARCH_LIMIT &&
-            nextUntil !== null;
+    posts.length > 0 &&
+    nextUntil !== null;
+        // const hasMore =
+        //     posts.length >= SEARCH_LIMIT &&
+        //     nextUntil !== null;
 
 
         console.log(
