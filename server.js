@@ -2164,17 +2164,58 @@ async function fetchBlueskyVlogs(
     // FINAL
     // ========================================================
 
-    const final =
-        [
-            ...strongCountry,
-            ...possibleCountry,
-            ...weakCountry
-        ]
-            .slice(
-                0,
-                requestedLimit
-            );
+    // const final =
+    //     [
+    //         ...strongCountry,
+    //         ...possibleCountry,
+    //         ...weakCountry
+    //     ]
+    //         .slice(
+    //             0,
+    //             requestedLimit
+    //         );
+const rankedByCountry =
+    [
+        ...strongCountry,
+        ...possibleCountry,
+        ...weakCountry
+    ];
 
+
+const final =
+    diversifyByCreator(
+        rankedByCountry,
+        requestedLimit,
+
+        item =>
+            item?.creatorId ||
+            item?.authorDid ||
+            item?.creatorName ||
+            ""
+    );
+
+    const finalCreatorCount =
+    new Set(
+        final
+            .map(
+                item =>
+                    cleanText(
+                        item?.creatorId ||
+                        item?.authorDid ||
+                        item?.creatorName
+                    )
+                        .toLowerCase()
+            )
+            .filter(Boolean)
+    ).size;
+
+
+console.log(
+    `🦋 BLUESKY DIVERSITY` +
+    ` | candidates=${rankedByCountry.length}` +
+    ` | returned=${final.length}` +
+    ` | creators=${finalCreatorCount}`
+);
 
     // ========================================================
     // REMEMBER RETURNED IDs
@@ -4293,6 +4334,167 @@ function decodeMastodonCursor(
     }
 }
 
+function diversifyByCreator(
+    items,
+    limit,
+    creatorKeyGetter
+) {
+
+    const safeItems =
+        Array.isArray(items)
+            ? items.filter(Boolean)
+            : [];
+
+
+    const safeLimit =
+        Math.max(
+            Number(limit) || 0,
+            0
+        );
+
+
+    if (
+        safeItems.length === 0 ||
+        safeLimit === 0
+    ) {
+        return [];
+    }
+
+
+    // ========================================================
+    // GROUP BY CREATOR
+    // ========================================================
+
+    const groups =
+        new Map();
+
+
+    let unknownIndex = 0;
+
+
+    for (
+        const item
+        of safeItems
+    ) {
+
+        let creatorKey =
+            cleanText(
+                creatorKeyGetter(item)
+            )
+                .toLowerCase();
+
+
+        /*
+         * Missing creator ID wale unrelated videos ko
+         * ek hi creator mat samajhna.
+         */
+        if (!creatorKey) {
+
+            const fallbackId =
+                cleanText(
+                    item?.id
+                ) ||
+                cleanText(
+                    item?.uniqueId
+                ) ||
+                cleanText(
+                    item?.videoUrl
+                );
+
+
+            creatorKey =
+                fallbackId
+                    ? `unknown:${fallbackId}`
+                    : `unknown:${unknownIndex++}`;
+        }
+
+
+        if (
+            !groups.has(
+                creatorKey
+            )
+        ) {
+
+            groups.set(
+                creatorKey,
+                []
+            );
+        }
+
+
+        groups
+            .get(creatorKey)
+            .push(item);
+    }
+
+
+    // ========================================================
+    // ROUND-ROBIN
+    // ========================================================
+
+    const creatorGroups =
+        Array.from(
+            groups.values()
+        );
+
+
+    const result = [];
+
+    let round = 0;
+
+
+    while (
+        result.length < safeLimit
+    ) {
+
+        let addedThisRound =
+            false;
+
+
+        for (
+            const creatorItems
+            of creatorGroups
+        ) {
+
+            const item =
+                creatorItems[round];
+
+
+            if (!item) {
+                continue;
+            }
+
+
+            result.push(
+                item
+            );
+
+
+            addedThisRound =
+                true;
+
+
+            if (
+                result.length >=
+                safeLimit
+            ) {
+                break;
+            }
+        }
+
+
+        if (!addedThisRound) {
+            break;
+        }
+
+
+        round++;
+    }
+
+
+    return result;
+}
+
 
 // ============================================================
 // FETCH MASTODON VLOGS
@@ -5242,16 +5444,57 @@ async function fetchMastodonVlogs(
         );
 
 
-    const videos =
-        [
-            ...strongCountry,
-            ...possibleCountry,
-            ...weakCountry
-        ]
-            .slice(
-                0,
-                limit
-            );
+    // const videos =
+    //     [
+    //         ...strongCountry,
+    //         ...possibleCountry,
+    //         ...weakCountry
+    //     ]
+    //         .slice(
+    //             0,
+    //             limit
+    //         );
+
+    const rankedByCountry =
+    [
+        ...strongCountry,
+        ...possibleCountry,
+        ...weakCountry
+    ];
+
+
+const videos =
+    diversifyByCreator(
+        rankedByCountry,
+        limit,
+
+        item =>
+            item?.creatorId ||
+            item?.creatorName ||
+            ""
+    );
+
+    const finalCreatorCount =
+    new Set(
+        videos
+            .map(
+                item =>
+                    cleanText(
+                        item?.creatorId ||
+                        item?.creatorName
+                    )
+                        .toLowerCase()
+            )
+            .filter(Boolean)
+    ).size;
+
+
+console.log(
+    `🐘 MASTODON DIVERSITY` +
+    ` | candidates=${rankedByCountry.length}` +
+    ` | returned=${videos.length}` +
+    ` | creators=${finalCreatorCount}`
+);
 
 
     // ========================================================
