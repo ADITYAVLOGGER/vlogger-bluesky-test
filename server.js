@@ -1467,22 +1467,47 @@ function calculateCountryScore(
     countryCode
 ) {
 
-    const text =
+    // ========================================================
+    // BASIC DATA
+    // ========================================================
+
+    const postText =
         normalizeSignalText(
             getPostText(post)
         );
 
 
-    const language =
+    const authorText =
+        normalizeSignalText(
+            [
+                post?.author?.displayName,
+                post?.author?.handle,
+                post?.author?.description
+            ]
+                .filter(Boolean)
+                .join(" ")
+        );
+
+
+    const combinedText =
+        normalizeSignalText(
+            `${postText} ${authorText}`
+        );
+
+
+    const languages =
         Array.isArray(
             post?.record?.langs
         )
-            ? cleanText(
-                post.record.langs[0]
-            )
-                .toLowerCase()
-                .split("-")[0]
-            : "";
+            ? post.record.langs
+                .map(
+                    item =>
+                        cleanText(item)
+                            .toLowerCase()
+                            .split("-")[0]
+                )
+                .filter(Boolean)
+            : [];
 
 
     const country =
@@ -1506,7 +1531,14 @@ function calculateCountryScore(
         );
 
 
-    let score = 0;
+    // ========================================================
+    // SIGNAL COUNTERS
+    // ========================================================
+
+    let explicitCountryMatches = 0;
+    let locationMatches = 0;
+    let weakMatches = 0;
+    let localLanguageMatches = 0;
 
 
     // ========================================================
@@ -1520,27 +1552,18 @@ function calculateCountryScore(
 
         if (
             containsLocationSignal(
-                text,
+                combinedText,
                 signal
             )
         ) {
 
-            /*
-             * Explicit country name is already strong evidence.
-             *
-             * Example:
-             * India
-             * भारत
-             * Japan
-             * 日本
-             */
-            score += 70;
+            explicitCountryMatches++;
         }
     }
 
 
     // ========================================================
-    // CITY / REGION SIGNAL
+    // CITY / STATE / REGION SIGNAL
     // ========================================================
 
     for (
@@ -1550,18 +1573,18 @@ function calculateCountryScore(
 
         if (
             containsLocationSignal(
-                text,
+                combinedText,
                 signal
             )
         ) {
 
-            score += 55;
+            locationMatches++;
         }
     }
 
 
     // ========================================================
-    // WEAK NATIONALITY SIGNAL
+    // NATIONALITY / WEAKER SIGNAL
     // ========================================================
 
     for (
@@ -1571,38 +1594,281 @@ function calculateCountryScore(
 
         if (
             containsLocationSignal(
-                text,
+                combinedText,
                 signal
             )
         ) {
 
-            score += 25;
+            weakMatches++;
         }
     }
 
 
     // ========================================================
-    // LANGUAGE SUPPORT
+    // LOCAL LANGUAGE SIGNAL
     // ========================================================
 
-    if (
-        language &&
-        config.languages.includes(
-            language
-        )
+    for (
+        const language
+        of languages
     ) {
 
-        /*
-         * Language alone should not make a post
-         * strongly local.
-         */
+        if (
+            config.languages.includes(
+                language
+            )
+        ) {
+
+            localLanguageMatches++;
+        }
+    }
+
+
+    // ========================================================
+    // SCORE
+    //
+    // IMPORTANT:
+    // Country name alone is NOT enough for STRONG LOCAL.
+    //
+    // "India travel in Delhi"        -> strong
+    // "Daily life in Mumbai"         -> strong
+    // Hindi + India                  -> strong
+    // "Indian restaurant Hollywood"  -> should stay weak
+    // ========================================================
+
+    let score = 0;
+
+
+    // Country mention alone = useful, but NOT strong.
+    if (
+        explicitCountryMatches > 0
+    ) {
+        score += 30;
+    }
+
+
+    // Real city/state/region is much stronger evidence.
+    if (
+        locationMatches > 0
+    ) {
+        score += 60;
+    }
+
+
+    // Multiple local locations reinforce confidence.
+    if (
+        locationMatches >= 2
+    ) {
+        score += 10;
+    }
+
+
+    // Nationality adjective alone is weak.
+    if (
+        weakMatches > 0
+    ) {
+        score += 10;
+    }
+
+
+    // Local language alone helps, but cannot prove location.
+    if (
+        localLanguageMatches > 0
+    ) {
         score += 20;
     }
 
 
-    return Math.min(
-        score,
-        100
+    // ========================================================
+    // COMBINATION BONUSES
+    // ========================================================
+
+    if (
+        explicitCountryMatches > 0 &&
+        locationMatches > 0
+    ) {
+
+        score += 20;
+    }
+
+
+    if (
+        explicitCountryMatches > 0 &&
+        localLanguageMatches > 0
+    ) {
+
+        score += 20;
+    }
+
+
+    if (
+        locationMatches > 0 &&
+        localLanguageMatches > 0
+    ) {
+
+        score += 15;
+    }
+
+
+    // ========================================================
+    // INDIA-SPECIFIC FOREIGN LOCATION CONFLICT
+    //
+    // This prevents examples like:
+    //
+    // "Indian restaurant Hollywood"
+    // "Indian food in London"
+    // "Indian restaurant New York"
+    //
+    // from being classified as strongly located in India.
+    //
+    // IMPORTANT:
+    // We only apply this when there is NO Indian city/state
+    // evidence. Delhi/Mumbai/etc. always wins.
+    // ========================================================
+
+    if (
+        country === "IN" &&
+        locationMatches === 0
+    ) {
+
+        const foreignLocationSignals = [
+
+            "hollywood",
+            "los angeles",
+            "california",
+            "new york",
+            "nyc",
+            "chicago",
+            "texas",
+            "florida",
+
+            "london",
+            "manchester",
+            "birmingham",
+
+            "toronto",
+            "vancouver",
+
+            "sydney",
+            "melbourne",
+
+            "dubai",
+            "abu dhabi",
+
+            "singapore",
+
+            "paris",
+            "berlin",
+            "tokyo",
+            "seoul"
+        ];
+
+
+        let foreignLocationFound = false;
+
+
+        for (
+            const signal
+            of foreignLocationSignals
+        ) {
+
+            if (
+                containsLocationSignal(
+                    postText,
+                    signal
+                )
+            ) {
+
+                foreignLocationFound = true;
+                break;
+            }
+        }
+
+
+        if (
+            foreignLocationFound
+        ) {
+
+            /*
+             * Do not make the score negative.
+             *
+             * Example:
+             *
+             * "Indian restaurant Hollywood"
+             *
+             * India + Indian may initially score 40,
+             * then foreign-location penalty pushes it
+             * below POSSIBLE LOCAL.
+             */
+            score -= 35;
+        }
+    }
+
+
+    // ========================================================
+    // GENERIC "INDIA REFERENCE" PHRASES
+    //
+    // These phrases often talk ABOUT India without showing
+    // that the video itself is local Indian content.
+    // ========================================================
+
+    if (
+        country === "IN" &&
+        locationMatches === 0
+    ) {
+
+        const referenceOnlySignals = [
+
+            "reminds you of india",
+            "taste of india",
+            "flavors of india",
+            "flavours of india",
+            "inspired by india",
+            "indian restaurant",
+            "indian cuisine"
+        ];
+
+
+        let referenceOnlyFound = false;
+
+
+        for (
+            const signal
+            of referenceOnlySignals
+        ) {
+
+            if (
+                containsLocationSignal(
+                    postText,
+                    signal
+                )
+            ) {
+
+                referenceOnlyFound = true;
+                break;
+            }
+        }
+
+
+        if (
+            referenceOnlyFound
+        ) {
+
+            score -= 20;
+        }
+    }
+
+
+    // ========================================================
+    // FINAL SAFETY
+    // ========================================================
+
+    return Math.max(
+        0,
+        Math.min(
+            score,
+            100
+        )
     );
 }
 
