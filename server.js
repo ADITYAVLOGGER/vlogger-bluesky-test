@@ -747,18 +747,45 @@ function getCountryQueries(
 
         case "IN":
 
-            return [
-                "india vlog",
-                "hindi vlog",
-                "indian vlog",
-                "indian daily life",
-                "day in my life india",
-                "india travel vlog",
-                "india food vlog",
-                "street food india",
-                "college life india",
-                "daily routine india"
-            ];
+           return [
+
+    // ========================================================
+    // HIGH INTENT — explicit vlog
+    // ========================================================
+
+    "india vlog",
+    "indian vlog",
+    "hindi vlog",
+
+    // ========================================================
+    // PERSONAL / DAILY LIFE
+    // ========================================================
+
+    "day in my life india",
+    "daily life india",
+    "college life india",
+
+    // ========================================================
+    // LOCAL CITY DISCOVERY
+    // ========================================================
+
+    "delhi vlog",
+    "mumbai vlog",
+    "bangalore vlog",
+
+    // ========================================================
+    // LOCAL LIFESTYLE
+    // ========================================================
+
+    "street food india",
+    "travel india",
+
+    // ========================================================
+    // NATIVE LANGUAGE DISCOVERY
+    // ========================================================
+
+    "भारत vlog"
+];
 
 
         // ====================================================
