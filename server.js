@@ -4816,36 +4816,83 @@ function getMastodonHashtags(countryCode) {
             .trim()
             .toUpperCase();
 
-    const local =
-        MASTODON_HASHTAGS[country] || [];
 
-    const global =
+    const globalTags =
         MASTODON_HASHTAGS.DEFAULT || [];
 
-    /*
-     * Country-specific discovery first.
-     *
-     * Global vlog hashtags are included so that
-     * local inventory kam hone par genuine global
-     * vlog content bhi mil sake.
-     *
-     * Duplicate hashtags remove honge.
-     * Maximum 8 requests hi jayengi.
-     */
 
-    const combined = [
-        ...local.slice(0, 5),
-        ...global.slice(0, 5)
-    ];
+    // ========================================================
+    // GLOBAL DISCOVERY
+    //
+    // GLOBAL means genuinely global.
+    // Do NOT mix country-specific hashtags here.
+    // ========================================================
+
+    if (
+        !country ||
+        country === "GLOBAL"
+    ) {
+
+        return [
+            ...new Set(
+                globalTags
+            )
+        ].slice(
+            0,
+            8
+        );
+    }
+
+
+    // ========================================================
+    // COUNTRY DISCOVERY
+    //
+    // IMPORTANT:
+    //
+    // IN request  -> only Indian/local hashtags
+    // JP request  -> only Japanese/local hashtags
+    // BR request  -> only Brazilian/local hashtags
+    //
+    // Global fallback Android/manager handle karega.
+    // ========================================================
+
+    const localTags =
+        MASTODON_HASHTAGS[country] || [];
+
+
+    if (
+        localTags.length > 0
+    ) {
+
+        return [
+            ...new Set(
+                localTags
+            )
+        ].slice(
+            0,
+            8
+        );
+    }
+
+
+    // ========================================================
+    // UNKNOWN COUNTRY
+    //
+    // Country configuration nahi hai to random country content
+    // pretend nahi karenge.
+    //
+    // Global discovery use karenge as safe fallback.
+    // ========================================================
 
     return [
-        ...new Set(combined)
+        ...new Set(
+            globalTags
+        )
     ].slice(
         0,
         8
     );
 }
-
 
 // ============================================================
 // PART 2 END
@@ -6409,7 +6456,7 @@ async function fetchMastodonVlogs(
     //             item.countryConfidence < 70
     //     );
 
-    const strongCountry =
+const strongCountry =
     candidates.filter(
         item =>
             item.countryConfidence >= 60
@@ -6424,18 +6471,50 @@ const possibleCountry =
     );
 
 
-    const weakCountry =
-        candidates.filter(
-            item =>
-                item.countryConfidence < 35
-        );
+const weakCountry =
+    candidates.filter(
+        item =>
+            item.countryConfidence < 35
+    );
 
-    const rankedByCountry =
-    [
-        ...strongCountry,
-        ...possibleCountry,
-        ...weakCountry
-    ];
+
+// ========================================================
+// LOCAL-FIRST / GLOBAL-FALLBACK GATE
+//
+// Country request:
+//     STRONG + POSSIBLE only.
+//
+// GLOBAL request:
+//     all valid vlog candidates.
+//
+// IMPORTANT:
+// Global fallback yahan country response ke andar mix
+// nahi hoga. Android discovery manager GLOBAL request
+// separately karega when local supply is low.
+// ========================================================
+
+const isGlobalRequest =
+    country === "GLOBAL";
+
+
+const rankedByCountry =
+    isGlobalRequest
+        ? candidates
+        : [
+            ...strongCountry,
+            ...possibleCountry
+        ];
+
+
+console.log(
+    `🌍 MASTODON COUNTRY GATE` +
+    ` | country=${country}` +
+    ` | strong=${strongCountry.length}` +
+    ` | possible=${possibleCountry.length}` +
+    ` | weak=${weakCountry.length}` +
+    ` | eligible=${rankedByCountry.length}` +
+    ` | weakAllowed=${isGlobalRequest}`
+);
 
 
 const videos =
