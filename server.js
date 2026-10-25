@@ -2696,13 +2696,29 @@ const vlogScore =
     // ========================================================
 
 
-const rankedByCountry =
-    [
-        ...strongCountry,
-        ...possibleCountry,
-        ...weakCountry
-    ];
+const isGlobalRequest =
+    cleanText(countryCode)
+        .toUpperCase() === "GLOBAL";
 
+
+const rankedByCountry =
+    isGlobalRequest
+        ? ranked
+        : [
+            ...strongCountry,
+            ...possibleCountry
+        ];
+
+
+console.log(
+    `🌍 BLUESKY COUNTRY GATE` +
+    ` | country=${countryCode}` +
+    ` | strong=${strongCountry.length}` +
+    ` | possible=${possibleCountry.length}` +
+    ` | weak=${weakCountry.length}` +
+    ` | eligible=${rankedByCountry.length}` +
+    ` | weakAllowed=${isGlobalRequest}`
+);
 
 const final =
     diversifyByCreator(
