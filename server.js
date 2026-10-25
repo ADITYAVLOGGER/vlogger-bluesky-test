@@ -4258,12 +4258,16 @@ function calculateMastodonVlogScore(
 
     const safeTags =
         Array.isArray(tags)
-            ? tags.map(tag =>
-                String(tag || "")
-                    .toLowerCase()
-                    .replace(/[_#\s-]+/g, "")
-              )
+            ? tags
+                .map(
+                    tag =>
+                        String(tag || "")
+                            .toLowerCase()
+                            .replace(/[_#\s-]+/g, "")
+                )
+                .filter(Boolean)
             : [];
+
 
     // ====================================================
     // HARD BLOCK
@@ -4276,6 +4280,7 @@ function calculateMastodonVlogScore(
     ) {
         return 0;
     }
+
 
     // ====================================================
     // COMMERCIAL
@@ -4292,10 +4297,12 @@ function calculateMastodonVlogScore(
         return 0;
     }
 
+
     let score = 0;
 
+
     // ====================================================
-    // VERY STRONG VLOG SIGNALS
+    // VERY STRONG PERSONAL VLOG SIGNALS
     // ====================================================
 
     const veryStrongSignals = [
@@ -4339,7 +4346,6 @@ function calculateMastodonVlogScore(
         "spend the day with me",
         "day with me",
         "a day with me",
-        "chill day with me",
 
         "join me for the day",
         "follow me for the day",
@@ -4347,17 +4353,30 @@ function calculateMastodonVlogScore(
         "weekend in my life"
     ];
 
+
     const veryStrongHits =
         countSignals(
             value,
             veryStrongSignals
         );
 
-    score +=
-        veryStrongHits * 30;
+
+    if (
+        veryStrongHits > 0
+    ) {
+
+        score += 40;
+
+        score +=
+            Math.min(
+                (veryStrongHits - 1) * 10,
+                20
+            );
+    }
+
 
     // ====================================================
-    // EXPLICIT VLOG
+    // EXPLICIT VLOG WORD
     // ====================================================
 
     const explicitVlogSignals = [
@@ -4365,14 +4384,21 @@ function calculateMastodonVlogScore(
         "vlogging"
     ];
 
+
     const explicitVlogHits =
         countSignals(
             value,
             explicitVlogSignals
         );
 
-    score +=
-        explicitVlogHits * 25;
+
+    if (
+        explicitVlogHits > 0
+    ) {
+
+        score += 35;
+    }
+
 
     // ====================================================
     // PERSONAL EXPERIENCE
@@ -4419,8 +4445,15 @@ function calculateMastodonVlogScore(
 
         "i'm visiting",
         "im visiting",
-        "i am visiting"
+        "i am visiting",
+
+        "i explored",
+        "we explored",
+
+        "i tried",
+        "we tried"
     ];
+
 
     const personalHits =
         countSignals(
@@ -4428,11 +4461,23 @@ function calculateMastodonVlogScore(
             personalSignals
         );
 
-    score +=
-        personalHits * 18;
+
+    if (
+        personalHits > 0
+    ) {
+
+        score += 25;
+
+        score +=
+            Math.min(
+                (personalHits - 1) * 6,
+                12
+            );
+    }
+
 
     // ====================================================
-    // LIFESTYLE / EXPERIENCE
+    // EXPERIENCE / LIFESTYLE
     // ====================================================
 
     const experienceSignals = [
@@ -4462,8 +4507,12 @@ function calculateMastodonVlogScore(
         "work day",
         "work life",
 
-        "weekend trip"
+        "weekend trip",
+
+        "exploring ",
+        "explore with me"
     ];
+
 
     const experienceHits =
         countSignals(
@@ -4471,13 +4520,25 @@ function calculateMastodonVlogScore(
             experienceSignals
         );
 
-    score +=
-        experienceHits * 15;
+
+    if (
+        experienceHits > 0
+    ) {
+
+        score += 18;
+
+        score +=
+            Math.min(
+                (experienceHits - 1) * 5,
+                10
+            );
+    }
+
 
     // ====================================================
-    // GENERIC LIFESTYLE SIGNALS
+    // GENERIC CONTEXT
     //
-    // These alone must NOT make something a vlog.
+    // Helpful, but NEVER enough alone.
     // ====================================================
 
     const genericSignals = [
@@ -4525,11 +4586,13 @@ function calculateMastodonVlogScore(
         "celebration"
     ];
 
+
     const genericHits =
         countSignals(
             value,
             genericSignals
         );
+
 
     score +=
         Math.min(
@@ -4537,89 +4600,153 @@ function calculateMastodonVlogScore(
             12
         );
 
+
     // ====================================================
     // VLOG HASHTAGS
     // ====================================================
 
-    const strongTags = new Set([
+    const strongTags =
+        new Set([
 
-        "vlog",
-        "vlogging",
+            "vlog",
+            "vlogging",
 
-        "dailyvlog",
-        "minivlog",
+            "dailyvlog",
+            "minivlog",
 
-        "travelvlog",
-        "foodvlog",
-        "familyvlog",
+            "travelvlog",
+            "foodvlog",
+            "familyvlog",
 
-        "collegevlog",
-        "studentvlog",
+            "collegevlog",
+            "studentvlog",
+            "lifestylevlog",
 
-        "lifestylevlog",
+            "dayinmylife",
+            "weekinmylife",
 
-        "dayinmylife",
-        "weekinmylife"
-    ]);
+            // Country-specific vlog communities
+            "indiavlog",
+            "indianvlog",
+            "indianvlogger"
+        ]);
 
-    const weakTags = new Set([
 
-        "dailylife",
-        "everydaylife",
+    const weakTags =
+        new Set([
 
-        "lifestyle",
+            "dailylife",
+            "everydaylife",
 
-        "roadtrip",
+            "lifestyle",
 
-        "vacation",
-        "holiday",
+            "roadtrip",
 
-        "citylife",
+            "vacation",
+            "holiday",
 
-        "studentlife",
-        "collegelife"
-    ]);
+            "citylife",
+
+            "studentlife",
+            "collegelife"
+        ]);
+
 
     const strongTagHits =
         safeTags.filter(
-            tag => strongTags.has(tag)
+            tag =>
+                strongTags.has(tag)
         ).length;
+
 
     const weakTagHits =
         safeTags.filter(
-            tag => weakTags.has(tag)
+            tag =>
+                weakTags.has(tag)
         ).length;
 
-    // ----------------------------------------------------
-    // IMPORTANT:
-    // Hashtag alone should not automatically prove
-    // that random content is a vlog.
-    // ----------------------------------------------------
 
-    const textEvidence =
+    // ====================================================
+    // EVIDENCE
+    // ====================================================
+
+    const strongTextEvidence =
         veryStrongHits +
         explicitVlogHits +
-        personalHits +
-        experienceHits;
+        personalHits;
+
+
+    const supportingTextEvidence =
+        experienceHits +
+        genericHits;
+
+
+    // ====================================================
+    // STRONG VLOG HASHTAG
+    //
+    // Mastodon captions can be extremely short.
+    // Therefore a real vlog-specific hashtag can be
+    // meaningful evidence, but generic lifestyle tags
+    // cannot independently prove a vlog.
+    // ====================================================
 
     if (
-        textEvidence > 0
+        strongTagHits > 0
     ) {
 
-        score +=
-            strongTagHits * 18;
+        if (
+            strongTextEvidence > 0
+        ) {
 
-    } else {
+            score +=
+                Math.min(
+                    strongTagHits * 15,
+                    30
+                );
 
-        score +=
-            strongTagHits * 6;
+        } else if (
+            supportingTextEvidence > 0
+        ) {
+
+            score +=
+                Math.min(
+                    strongTagHits * 12,
+                    24
+                );
+
+        } else {
+
+            score +=
+                Math.min(
+                    strongTagHits * 10,
+                    20
+                );
+        }
     }
+
 
     score +=
         Math.min(
-            weakTagHits * 6,
-            12
+            weakTagHits * 4,
+            8
         );
+
+
+    // ====================================================
+    // SHORT MASTODON CAPTION SUPPORT
+    //
+    // Explicit vlog-community hashtag + at least some
+    // lifestyle/context evidence can cross the threshold.
+    // ====================================================
+
+    if (
+        strongTagHits > 0 &&
+        supportingTextEvidence > 0
+    ) {
+
+        score += 12;
+    }
+
 
     // ====================================================
     // COMMERCIAL PENALTY
@@ -4628,25 +4755,49 @@ function calculateMastodonVlogScore(
     score -=
         commercialScore * 12;
 
+
     // ====================================================
-    // IMPORTANT QUALITY GATE
-    //
-    // Generic words + hashtags alone cannot create
-    // a high-confidence vlog.
+    // QUALITY GATES
     // ====================================================
 
+    /*
+     * No personal/vlog evidence AND no vlog-specific hashtag:
+     * generic India/travel/food/location tags cannot create
+     * a vlog by themselves.
+     */
     if (
-        textEvidence === 0
+        strongTextEvidence === 0 &&
+        strongTagHits === 0
     ) {
 
         return Math.max(
             0,
             Math.min(
-                score,
+                Math.round(score),
                 25
             )
         );
     }
+
+
+    /*
+     * A bare #vlog/#indiavlog on completely contextless
+     * content is still not enough to automatically pass 40.
+     */
+    if (
+        strongTextEvidence === 0 &&
+        supportingTextEvidence === 0
+    ) {
+
+        return Math.max(
+            0,
+            Math.min(
+                Math.round(score),
+                30
+            )
+        );
+    }
+
 
     // ====================================================
     // FINAL
