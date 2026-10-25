@@ -1345,75 +1345,224 @@ function containsBlueskyJunk(
 function calculateVlogScore(post) {
 
     const text =
-        getPostText(post)
-            .toLowerCase();
+        normalizeSignalText(
+            getPostText(post)
+        );
 
     if (!text) {
         return 0;
     }
 
 
-    if (
-        containsBlockedContent(
-            text
-        ) ||
-        containsBlueskyJunk(
-            post
-        )
-    ) {
+    // ========================================================
+    // HARD BLOCK
+    // ========================================================
 
+    if (
+        containsBlockedContent(text) ||
+        containsBlueskyJunk(post)
+    ) {
         return 0;
     }
 
-    let score = 15;
+
+    let score = 10;
+
+
+    // ========================================================
+    // 1. STRONG VLOG SIGNALS
+    // ========================================================
 
     const strongSignals = [
+
         "vlog",
         "vlogging",
         "daily vlog",
         "mini vlog",
         "travel vlog",
         "food vlog",
-        "weekend vlog"
+        "weekend vlog",
+
+        // Hindi / Indian discovery
+        "व्लॉग",
+        "मिनी व्लॉग"
     ];
 
+
+    // ========================================================
+    // 2. PERSONAL LIFE / DAILY-LIFE SIGNALS
+    // ========================================================
+
     const lifestyleSignals = [
+
         "day in my life",
         "daily life",
         "my day",
+
         "morning routine",
         "evening routine",
         "daily routine",
+
         "college life",
         "student life",
+        "school life",
+        "hostel life",
         "work life",
+
         "life in ",
         "living in ",
+
+        "grwm",
+        "get ready with me",
+
+        "weekend in",
+        "weekend trip",
+        "road trip",
+
+        "travel diary",
+        "travel diaries",
+        "travel day",
+
+        "food diary",
+        "what i eat",
+        "what i ate",
+
+        "exploring ",
+        "explore with me",
+
+        // Hindi personal/lifestyle signals
+        "मेरी जिंदगी",
+        "मेरी ज़िंदगी",
+        "मेरी दिनचर्या",
+        "मेरा दिन",
+        "आज का दिन",
+        "मेरी यात्रा",
+        "मेरा सफर"
+    ];
+
+
+    // ========================================================
+    // 3. FIRST-PERSON / CREATOR SIGNALS
+    // ========================================================
+
+    const personalSignals = [
+
+        "my ",
+        "today i",
+        "today we",
+
+        "i went",
+        "we went",
+
+        "i visited",
+        "we visited",
+
+        "i explored",
+        "we explored",
+
+        "i tried",
+        "we tried",
+
+        "come with me",
+        "join me",
+
+        "our trip",
+        "my trip",
+
+        "our day",
+        "my life",
+        "our journey"
+    ];
+
+
+    // ========================================================
+    // 4. WEAK TOPIC SIGNALS
+    //
+    // IMPORTANT:
+    // These do NOT prove that something is a vlog.
+    // ========================================================
+
+    const weakLifestyleSignals = [
+
         "street food",
         "cafe",
         "café",
+
         "road trip",
         "vacation",
         "holiday",
         "journey",
+
         "weekend",
         "travel",
         "trip",
-        "grwm",
-        "get ready with me"
+
+        "college",
+        "campus",
+        "hostel",
+
+        "food",
+        "restaurant"
     ];
 
-    const personalSignals = [
-        "my ",
-        "today",
-        "we went",
-        "i went",
-        "i visited",
-        "we visited",
-        "our trip",
-        "my trip",
-        "my life"
+
+    // ========================================================
+    // 5. PROMOTIONAL / GUIDE / COMMERCIAL SIGNALS
+    // ========================================================
+
+    const promotionalSignals = [
+
+        "visit here",
+        "visit our",
+        "visit us",
+
+        "read more",
+        "read our",
+        "full guide",
+        "our guide",
+
+        "click here",
+        "learn more",
+
+        "book now",
+        "book here",
+        "reserve now",
+
+        "shop now",
+        "buy now",
+        "order now",
+
+        "available now",
+        "download now",
+
+        "best prices",
+        "affordable prices",
+
+        "contact us",
+        "call us",
+
+        "official website",
+        "our website",
+
+        "first timer's guide",
+        "first timers guide",
+
+        "tips and tricks",
+        "top 10",
+        "top 5"
     ];
+
+
+    // ========================================================
+    // 6. COUNT SIGNALS
+    // ========================================================
+
+    let strongCount = 0;
+    let lifestyleCount = 0;
+    let personalCount = 0;
+    let weakCount = 0;
+    let promotionalCount = 0;
+
 
     for (
         const signal
@@ -1423,9 +1572,10 @@ function calculateVlogScore(post) {
         if (
             text.includes(signal)
         ) {
-            score += 30;
+            strongCount++;
         }
     }
+
 
     for (
         const signal
@@ -1435,9 +1585,10 @@ function calculateVlogScore(post) {
         if (
             text.includes(signal)
         ) {
-            score += 15;
+            lifestyleCount++;
         }
     }
+
 
     for (
         const signal
@@ -1447,16 +1598,234 @@ function calculateVlogScore(post) {
         if (
             text.includes(signal)
         ) {
-            score += 10;
+            personalCount++;
         }
     }
 
-    return Math.min(
-        score,
-        100
+
+    for (
+        const signal
+        of weakLifestyleSignals
+    ) {
+
+        if (
+            text.includes(signal)
+        ) {
+            weakCount++;
+        }
+    }
+
+
+    for (
+        const signal
+        of promotionalSignals
+    ) {
+
+        if (
+            text.includes(signal)
+        ) {
+            promotionalCount++;
+        }
+    }
+
+
+    // ========================================================
+    // 7. POSITIVE SCORING
+    // ========================================================
+
+    if (
+        strongCount > 0
+    ) {
+
+        score += 45;
+    }
+
+
+    // More than one explicit vlog phrase should not
+    // explode the score.
+    if (
+        strongCount >= 2
+    ) {
+
+        score += 10;
+    }
+
+
+    if (
+        lifestyleCount > 0
+    ) {
+
+        score += 30;
+    }
+
+
+    if (
+        lifestyleCount >= 2
+    ) {
+
+        score += 10;
+    }
+
+
+    if (
+        personalCount > 0
+    ) {
+
+        score += 20;
+    }
+
+
+    if (
+        personalCount >= 2
+    ) {
+
+        score += 5;
+    }
+
+
+    /*
+     * Generic topic words receive only a small bonus.
+     *
+     * "travel" alone must NOT turn an article/promo
+     * into a vlog.
+     */
+    if (
+        weakCount > 0
+    ) {
+
+        score += Math.min(
+            weakCount * 4,
+            12
+        );
+    }
+
+
+    // ========================================================
+    // 8. COMBINATION BONUSES
+    // ========================================================
+
+    if (
+        lifestyleCount > 0 &&
+        personalCount > 0
+    ) {
+
+        score += 15;
+    }
+
+
+    if (
+        strongCount > 0 &&
+        personalCount > 0
+    ) {
+
+        score += 10;
+    }
+
+
+    /*
+     * Personal creator + lifestyle topic is valuable even
+     * when literal word "vlog" is absent.
+     *
+     * Example:
+     *
+     * "Come with me exploring Delhi today"
+     */
+    if (
+        personalCount > 0 &&
+        weakCount > 0
+    ) {
+
+        score += 10;
+    }
+
+
+    // ========================================================
+    // 9. PROMOTIONAL PENALTY
+    // ========================================================
+
+    if (
+        promotionalCount > 0
+    ) {
+
+        score -= Math.min(
+            25 + (
+                promotionalCount - 1
+            ) * 10,
+            50
+        );
+    }
+
+
+    // ========================================================
+    // 10. EXTERNAL-LINK / ARTICLE STYLE PENALTY
+    // ========================================================
+
+    const hasExternalLink =
+        /https?:\/\/|www\./i.test(
+            text
+        );
+
+
+    /*
+     * A URL by itself is NOT enough to reject a creator.
+     *
+     * But:
+     *
+     * URL + no strong vlog evidence + no personal evidence
+     *
+     * is commonly an article, promotion or external-link post.
+     */
+    if (
+        hasExternalLink &&
+        strongCount === 0 &&
+        personalCount === 0
+    ) {
+
+        score -= 20;
+    }
+
+
+    // ========================================================
+    // 11. GENERIC TOPIC SAFETY
+    // ========================================================
+
+    /*
+     * This is the important part.
+     *
+     * "travel india"
+     * "street food delhi"
+     * "restaurant india"
+     *
+     * alone should NOT become a vlog.
+     *
+     * They remain below the existing >= 30 gate unless
+     * another real vlog/personal/lifestyle signal exists.
+     */
+    if (
+        strongCount === 0 &&
+        lifestyleCount === 0 &&
+        personalCount === 0
+    ) {
+
+        score = Math.min(
+            score,
+            22
+        );
+    }
+
+
+    // ========================================================
+    // FINAL
+    // ========================================================
+
+    return Math.max(
+        0,
+        Math.min(
+            score,
+            100
+        )
     );
 }
-
 
 // ============================================================
 // BLUESKY COUNTRY SCORE
