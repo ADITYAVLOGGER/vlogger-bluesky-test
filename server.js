@@ -6203,16 +6203,18 @@ if (
                         );
 
 
-                    const country =
-                        rawCountry
-                            ? rawCountry
-                                .toUpperCase()
-                                .slice(
-                                    0,
-                                    2
-                                )
-                            : "GLOBAL";
+                   const normalizedCountry =
+    cleanText(rawCountry)
+        .toUpperCase();
 
+const country =
+    normalizedCountry === "GLOBAL"
+        ? "GLOBAL"
+        : (
+            /^[A-Z]{2}$/.test(normalizedCountry)
+                ? normalizedCountry
+                : "GLOBAL"
+        );
 
                     const requestedLimit =
                         Math.min(
@@ -6412,15 +6414,18 @@ if (
                      * because GLOBAL becomes "GL".
                      */
 
-                    const country =
-                        rawCountry
-                            ? rawCountry
-                                .toUpperCase()
-                                .slice(
-                                    0,
-                                    2
-                                )
-                            : "GLOBAL";
+                    const normalizedCountry =
+    cleanText(rawCountry)
+        .toUpperCase();
+
+const country =
+    normalizedCountry === "GLOBAL"
+        ? "GLOBAL"
+        : (
+            /^[A-Z]{2}$/.test(normalizedCountry)
+                ? normalizedCountry
+                : "GLOBAL"
+        );
 
 
                     const requestedLimit =
