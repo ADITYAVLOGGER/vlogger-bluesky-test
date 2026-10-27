@@ -8607,6 +8607,101 @@ const country =
         }
     );
 
+// ============================================================
+// STARTUP WARMING
+// ============================================================
+
+async function warmSocialFeedsOnStartup() {
+
+    /*
+     * Start with GLOBAL first because it can act as
+     * fallback for every country.
+     *
+     * IN is warmed too because it is currently an
+     * important active market.
+     *
+     * Later we can expand this list without touching
+     * Android.
+     */
+    const countries = [
+        "GLOBAL",
+        "IN"
+    ];
+
+
+    console.log(
+        `🔥 STARTUP WARMING SCHEDULED` +
+        ` | countries=${countries.join(",")}`
+    );
+
+
+    for (
+        const country
+        of countries
+    ) {
+
+        try {
+
+            const existing =
+                getWarmSocialCacheEntry(
+                    country
+                );
+
+
+            if (
+                isWarmSocialCacheFresh(
+                    existing
+                )
+            ) {
+
+                console.log(
+                    `⚡ STARTUP WARM SKIP` +
+                    ` | country=${country}` +
+                    ` | reason=already_fresh`
+                );
+
+                continue;
+            }
+
+
+            console.log(
+                `🔥 STARTUP WARM BEGIN` +
+                ` | country=${country}`
+            );
+
+
+            const videos =
+                await buildWarmSocialFeed(
+                    country
+                );
+
+
+            console.log(
+                `✅ STARTUP WARM READY` +
+                ` | country=${country}` +
+                ` | videos=${videos.length}`
+            );
+
+
+        } catch (error) {
+
+            /*
+             * IMPORTANT:
+             * Cache warming must NEVER crash the server.
+             */
+            console.log(
+                `⚠️ STARTUP WARM FAILED` +
+                ` | country=${country}` +
+                ` | error=${error?.message || error}`
+            );
+        }
+    }
+
+
+    console.log(
+        "🔥 STARTUP WARMING FINISHED"
+    );
+}
 
 // ============================================================
 // START SERVER
