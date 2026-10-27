@@ -8727,6 +8727,15 @@ server.listen(
     }
 );
 
+warmSocialFeedsOnStartup()
+    .catch(error => {
+
+        console.log(
+            `⚠️ STARTUP WARMING UNHANDLED ERROR` +
+            ` | error=${error?.message || error}`
+        );
+    });
+
 
 
 
