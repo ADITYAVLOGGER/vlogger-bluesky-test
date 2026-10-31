@@ -48,43 +48,43 @@ let firebaseAdminReady = false;
 
 function initializeFirebaseAdmin() {
     try {
-        const projectId = String(
-            process.env.FIREBASE_PROJECT_ID || ""
+        const serviceAccountBase64 = String(
+            process.env.FIREBASE_SERVICE_ACCOUNT_BASE64 || ""
         ).trim();
 
-        const clientEmail = String(
-            process.env.FIREBASE_CLIENT_EMAIL || ""
-        ).trim();
-
-        const privateKeyRaw = String(
-            process.env.FIREBASE_PRIVATE_KEY || ""
-        ).trim();
-
-        if (!projectId || !clientEmail || !privateKeyRaw) {
+        if (!serviceAccountBase64) {
             console.error(
-                "❌ FIREBASE ADMIN NOT CONFIGURED | missing Render environment variables"
+                "❌ FIREBASE ADMIN NOT CONFIGURED | FIREBASE_SERVICE_ACCOUNT_BASE64 missing"
             );
-            firebaseAdminReady = false;
             return;
         }
 
-        // Render value may contain literal \n instead of real line breaks.
-        const privateKey = privateKeyRaw.replace(/\\n/g, "\n");
+        const serviceAccountJson = Buffer
+            .from(serviceAccountBase64, "base64")
+            .toString("utf8");
+
+        const serviceAccount = JSON.parse(serviceAccountJson);
+
+        if (
+            !serviceAccount.project_id ||
+            !serviceAccount.client_email ||
+            !serviceAccount.private_key
+        ) {
+            throw new Error(
+                "Service account JSON is missing required fields"
+            );
+        }
 
         if (admin.apps.length === 0) {
             admin.initializeApp({
-                credential: admin.credential.cert({
-                    projectId: projectId,
-                    clientEmail: clientEmail,
-                    privateKey: privateKey
-                })
+                credential: admin.credential.cert(serviceAccount)
             });
         }
 
         firebaseAdminReady = true;
 
         console.log(
-            `🔥 FIREBASE ADMIN READY | project=${projectId}`
+            `🔥 FIREBASE ADMIN READY | project=${serviceAccount.project_id}`
         );
 
     } catch (error) {
