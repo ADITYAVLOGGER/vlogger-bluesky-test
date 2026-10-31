@@ -384,6 +384,85 @@ function sendJson(
     );
 }
 
+// ============================================================
+// READ JSON BODY
+// ============================================================
+
+function readJsonBody(req, maxBytes = 16 * 1024) {
+
+    return new Promise((resolve, reject) => {
+
+        let body = "";
+        let receivedBytes = 0;
+        let finished = false;
+
+        req.setEncoding("utf8");
+
+        req.on("data", chunk => {
+
+            if (finished) {
+                return;
+            }
+
+            receivedBytes += Buffer.byteLength(
+                chunk,
+                "utf8"
+            );
+
+            if (receivedBytes > maxBytes) {
+
+                finished = true;
+
+                reject(
+                    new Error("REQUEST_BODY_TOO_LARGE")
+                );
+
+                return;
+            }
+
+            body += chunk;
+        });
+
+        req.on("end", () => {
+
+            if (finished) {
+                return;
+            }
+
+            finished = true;
+
+            if (!body.trim()) {
+                resolve({});
+                return;
+            }
+
+            try {
+
+                const parsed =
+                    JSON.parse(body);
+
+                resolve(parsed);
+
+            } catch (error) {
+
+                reject(
+                    new Error("INVALID_JSON")
+                );
+            }
+        });
+
+        req.on("error", error => {
+
+            if (finished) {
+                return;
+            }
+
+            finished = true;
+            reject(error);
+        });
+    });
+}
+
 
 function cleanText(value) {
 
@@ -7701,7 +7780,7 @@ const server =
                                 "*",
 
                             "Access-Control-Allow-Methods":
-                                "GET, OPTIONS",
+                                "GET,POST, OPTIONS",
 
                             "Access-Control-Allow-Headers":
                                 "Content-Type, Authorization",
@@ -7802,6 +7881,420 @@ const server =
                     return;
                 }
 
+
+                // ============================================================
+// 🔔 SECURE FCM NOTIFICATION API
+// ============================================================
+
+if (
+    req.method === "POST" &&
+    pathname === "/api/notifications/send"
+) {
+
+    // --------------------------------------------------------
+    // 1. Firebase Admin must be ready
+    // --------------------------------------------------------
+
+    if (!firebaseAdminReady) {
+
+        console.error(
+            "❌ NOTIFICATION API | Firebase Admin not ready"
+        );
+
+        sendJson(
+            res,
+            503,
+            {
+                status: "error",
+                error: "Notification service unavailable"
+            }
+        );
+
+        return;
+    }
+
+
+    // --------------------------------------------------------
+    // 2. Read Firebase ID token
+    // --------------------------------------------------------
+
+    const authorization =
+        cleanText(
+            req.headers.authorization
+        );
+
+    if (
+        !authorization ||
+        !authorization.startsWith("Bearer ")
+    ) {
+
+        sendJson(
+            res,
+            401,
+            {
+                status: "error",
+                error: "Authentication required"
+            }
+        );
+
+        return;
+    }
+
+
+    const idToken =
+        authorization
+            .substring(7)
+            .trim();
+
+    if (!idToken) {
+
+        sendJson(
+            res,
+            401,
+            {
+                status: "error",
+                error: "Authentication required"
+            }
+        );
+
+        return;
+    }
+
+
+    // --------------------------------------------------------
+    // 3. Verify caller with Firebase Auth
+    // --------------------------------------------------------
+
+    let decodedToken;
+
+    try {
+
+        decodedToken =
+            await admin
+                .auth()
+                .verifyIdToken(idToken);
+
+    } catch (error) {
+
+        console.log(
+            "⚠️ NOTIFICATION AUTH REJECTED",
+            error?.code || error?.message || "invalid_token"
+        );
+
+        sendJson(
+            res,
+            401,
+            {
+                status: "error",
+                error: "Invalid authentication"
+            }
+        );
+
+        return;
+    }
+
+
+    const senderUserId =
+        cleanText(
+            decodedToken?.uid
+        );
+
+    if (!senderUserId) {
+
+        sendJson(
+            res,
+            401,
+            {
+                status: "error",
+                error: "Invalid authentication"
+            }
+        );
+
+        return;
+    }
+
+
+    // --------------------------------------------------------
+    // 4. Read JSON
+    // --------------------------------------------------------
+
+    let body;
+
+    try {
+
+        body =
+            await readJsonBody(req);
+
+    } catch (error) {
+
+        const tooLarge =
+            error?.message ===
+            "REQUEST_BODY_TOO_LARGE";
+
+        sendJson(
+            res,
+            tooLarge ? 413 : 400,
+            {
+                status: "error",
+                error: tooLarge
+                    ? "Request body too large"
+                    : "Invalid JSON"
+            }
+        );
+
+        return;
+    }
+
+
+    // --------------------------------------------------------
+    // 5. Validate notification
+    // --------------------------------------------------------
+
+    const receiverToken =
+        cleanText(
+            body?.receiverToken
+        );
+
+    const title =
+        cleanText(
+            body?.title
+        ).slice(0, 120);
+
+    const notificationBody =
+        cleanText(
+            body?.message
+        ).slice(0, 500);
+
+    const type =
+        cleanText(
+            body?.type
+        )
+            .toLowerCase()
+            .slice(0, 30);
+
+    const postId =
+        cleanText(
+            body?.postId
+        ).slice(0, 200);
+
+    const contentType =
+        cleanText(
+            body?.contentType
+        )
+            .toLowerCase()
+            .slice(0, 50);
+
+
+    if (!receiverToken) {
+
+        sendJson(
+            res,
+            400,
+            {
+                status: "error",
+                error: "receiverToken is required"
+            }
+        );
+
+        return;
+    }
+
+
+    if (!title || !notificationBody) {
+
+        sendJson(
+            res,
+            400,
+            {
+                status: "error",
+                error: "title and message are required"
+            }
+        );
+
+        return;
+    }
+
+
+    const allowedTypes =
+        new Set([
+            "like",
+            "likes",
+            "comment",
+            "comments",
+            "follow",
+            "followed",
+            "review"
+        ]);
+
+
+    if (!allowedTypes.has(type)) {
+
+        sendJson(
+            res,
+            400,
+            {
+                status: "error",
+                error: "Unsupported notification type"
+            }
+        );
+
+        return;
+    }
+
+
+    // Like/comment/review require a post.
+    if (
+        (
+            type === "like" ||
+            type === "likes" ||
+            type === "comment" ||
+            type === "comments" ||
+            type === "review"
+        ) &&
+        !postId
+    ) {
+
+        sendJson(
+            res,
+            400,
+            {
+                status: "error",
+                error: "postId is required for this notification type"
+            }
+        );
+
+        return;
+    }
+
+
+    // --------------------------------------------------------
+    // 6. Build FCM data
+    //
+    // SECURITY:
+    // visitedUserId is NOT accepted from Android.
+    // Authenticated Firebase UID becomes the actor UID.
+    // --------------------------------------------------------
+
+    const notificationData = {
+        type: type,
+        visitedUserId: senderUserId
+    };
+
+
+    if (postId) {
+        notificationData.postId =
+            postId;
+    }
+
+
+    if (contentType) {
+        notificationData.contentType =
+            contentType;
+    }
+
+
+    try {
+
+        // ----------------------------------------------------
+        // IMPORTANT:
+        //
+        // For now preserve current notification + data
+        // behaviour.
+        //
+        // Step 20 can later move this to data-only after
+        // background/killed-state testing.
+        // ----------------------------------------------------
+
+        const fcmMessage = {
+
+            token:
+                receiverToken,
+
+            notification: {
+                title:
+                    title,
+
+                body:
+                    notificationBody
+            },
+
+            data:
+                notificationData,
+
+            android: {
+
+                priority:
+                    "high",
+
+                ttl:
+                    24 * 60 * 60 * 1000
+            }
+        };
+
+
+        const messageId =
+            await admin
+                .messaging()
+                .send(fcmMessage);
+
+
+        console.log(
+            `🔔 NOTIFICATION SENT` +
+            ` | sender=${senderUserId}` +
+            ` | type=${type}` +
+            ` | post=${postId || "NONE"}`
+        );
+
+
+        sendJson(
+            res,
+            200,
+            {
+                status:
+                    "success",
+
+                sent:
+                    true,
+
+                messageId:
+                    messageId
+            }
+        );
+
+
+        return;
+
+    } catch (error) {
+
+        console.error(
+            "❌ NOTIFICATION SEND FAILED |",
+            error?.code ||
+            error?.message ||
+            error
+        );
+
+
+        sendJson(
+            res,
+            502,
+            {
+                status:
+                    "error",
+
+                sent:
+                    false,
+
+                error:
+                    "Notification delivery failed"
+            }
+        );
+
+
+        return;
+    }
+}
+                
+                
                 // =================================================
 // TEST BLUESKY VIDEO FEED
 // =================================================
