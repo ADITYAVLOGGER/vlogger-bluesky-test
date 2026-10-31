@@ -8115,16 +8115,17 @@ if (
     }
 
 
-    const allowedTypes =
-        new Set([
-            "like",
-            "likes",
-            "comment",
-            "comments",
-            "follow",
-            "followed",
-            "review"
-        ]);
+    const allowedTypes = new Set([
+    "like",
+    "likes",
+    "comment",
+    "comments",
+    "follow",
+    "followed",
+    "review",
+    "chat",
+    "chats"
+]);
 
 
     if (!allowedTypes.has(type)) {
