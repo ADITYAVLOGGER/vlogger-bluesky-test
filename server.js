@@ -1,7 +1,7 @@
 const http = require("http");
 
 const PORT = process.env.PORT || 3000;
-
+const admin = require("firebase-admin");
 // ============================================================
 // CONFIG
 // ============================================================
@@ -38,6 +38,70 @@ const WARM_SOCIAL_CACHE_LIMIT =
  *     refreshing: Promise | null
  * }
  */
+
+
+// ============================================================
+// 🔐 FIREBASE ADMIN - SERVER SIDE ONLY
+// ============================================================
+
+let firebaseAdminReady = false;
+
+function initializeFirebaseAdmin() {
+    try {
+        const projectId = String(
+            process.env.FIREBASE_PROJECT_ID || ""
+        ).trim();
+
+        const clientEmail = String(
+            process.env.FIREBASE_CLIENT_EMAIL || ""
+        ).trim();
+
+        const privateKeyRaw = String(
+            process.env.FIREBASE_PRIVATE_KEY || ""
+        ).trim();
+
+        if (!projectId || !clientEmail || !privateKeyRaw) {
+            console.error(
+                "❌ FIREBASE ADMIN NOT CONFIGURED | missing Render environment variables"
+            );
+            firebaseAdminReady = false;
+            return;
+        }
+
+        // Render value may contain literal \n instead of real line breaks.
+        const privateKey = privateKeyRaw.replace(/\\n/g, "\n");
+
+        if (admin.apps.length === 0) {
+            admin.initializeApp({
+                credential: admin.credential.cert({
+                    projectId: projectId,
+                    clientEmail: clientEmail,
+                    privateKey: privateKey
+                })
+            });
+        }
+
+        firebaseAdminReady = true;
+
+        console.log(
+            `🔥 FIREBASE ADMIN READY | project=${projectId}`
+        );
+
+    } catch (error) {
+        firebaseAdminReady = false;
+
+        console.error(
+            "❌ FIREBASE ADMIN INIT FAILED |",
+            error?.message || error
+        );
+    }
+}
+
+initializeFirebaseAdmin();
+
+
+
+
 const warmSocialCache =
     new Map();
 
