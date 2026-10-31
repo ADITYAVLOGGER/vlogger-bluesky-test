@@ -1,12 +1,28 @@
+//{
+//  "name": "vlogger-bluesky-api",
+//  "version": "1.0.0",
+  //"description": "Bluesky video discovery API for Vlogger",
+  //"main": "server.js",
+  //"scripts": {
+    //"start": "node server.js"
+  //},
+  //"engines": {
+    //"node": ">=20"
+  //}
+//}
+
 {
-  "name": "vlogger-bluesky-api",
+  "name": "vlogger-social-api",
   "version": "1.0.0",
-  "description": "Bluesky video discovery API for Vlogger",
+  "description": "Vlogger Social Video and Notification Backend",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.5.0"
   }
 }
