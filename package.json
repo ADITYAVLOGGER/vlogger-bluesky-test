@@ -1,15 +1,3 @@
-//{
-//  "name": "vlogger-bluesky-api",
-//  "version": "1.0.0",
-  //"description": "Bluesky video discovery API for Vlogger",
-  //"main": "server.js",
-  //"scripts": {
-    //"start": "node server.js"
-  //},
-  //"engines": {
-    //"node": ">=20"
-  //}
-//}
 
 {
   "name": "vlogger-social-api",
