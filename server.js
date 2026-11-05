@@ -3903,13 +3903,13 @@ const vlogScore =
         // ENOUGH CANDIDATES
         // ====================================================
 
-        if (
-            unique.size >=
-            requestedLimit * 3
-        ) {
+        // if (
+        //     unique.size >=
+        //     requestedLimit * 3
+        // ) {
 
-            break;
-        }
+        //     break;
+        // }
 
 
         await sleep(100);
