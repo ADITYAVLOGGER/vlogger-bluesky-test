@@ -1902,8 +1902,7 @@ if (
     isAdultContent(blueskyModerationText) ||
     containsBlockedContent(text)
 ) {
-    debug.blocked++;
-    continue;
+    return 0;
 }
 
 
