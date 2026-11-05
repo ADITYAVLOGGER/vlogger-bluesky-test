@@ -131,15 +131,19 @@ function saveWarmSocialCache(
             countryCode || "GLOBAL"
         ).toUpperCase();
 
+    // const safeVideos =
+    //     Array.isArray(videos)
+    //         ? videos
+    //         : [];
+
+
+    // if (safeVideos.length === 0) {
+    //     return;
+    // }
     const safeVideos =
-        Array.isArray(videos)
-            ? videos
-            : [];
-
-
-    if (safeVideos.length === 0) {
-        return;
-    }
+    Array.isArray(videos)
+        ? videos.filter(isSafeSocialVideo)
+        : [];
 
 
     const existing =
@@ -173,16 +177,23 @@ function saveWarmSocialCache(
                 id || videoUrl;
 
 
-            if (
-                key &&
-                videoUrl
-            ) {
+            // if (
+            //     key &&
+            //     videoUrl
+            // ) {
 
-                unique.set(
-                    key,
-                    item
-                );
-            }
+            //     unique.set(
+            //         key,
+            //         item
+            //     );
+            // }
+            if (
+    key &&
+    videoUrl &&
+    isSafeSocialVideo(item)
+) {
+    unique.set(key, item);
+}
         }
     );
 
@@ -214,17 +225,27 @@ function saveWarmSocialCache(
                     id || videoUrl;
 
 
-                if (
-                    key &&
-                    videoUrl &&
-                    !unique.has(key)
-                ) {
+                // if (
+                //     key &&
+                //     videoUrl &&
+                //     !unique.has(key)
+                // ) {
 
-                    unique.set(
-                        key,
-                        item
-                    );
-                }
+                //     unique.set(
+                //         key,
+                //         item
+                //     );
+                // }
+
+                if (
+    key &&
+    videoUrl &&
+    isSafeSocialVideo(item) &&
+    !unique.has(key)
+) {
+    unique.set(key, item);
+}
+                
             }
         );
     }
@@ -1555,6 +1576,118 @@ function containsBlockedContent(text) {
     return false;
 }
 
+
+// ============================================================
+// PRODUCTION ADULT CONTENT HARD BLOCK
+// Text/metadata based safety layer. Fail-closed for known terms.
+// ============================================================
+
+function isAdultContent(text = "") {
+
+    const value = String(text || "")
+        .toLowerCase()
+        .normalize("NFKC")
+        .replace(/[_#./\\|]+/g, " ")
+        .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (!value) return false;
+
+    const blockedPhrases = [
+        "porn",
+        "porno",
+        "pornography",
+        "adult content",
+        "adult video",
+        "sex video",
+        "sex tape",
+        "sexual content",
+        "sexual services",
+        "onlyfans",
+        "only fans",
+        "nsfw",
+        "not safe for work",
+        "nude video",
+        "nude photos",
+        "nudes",
+        "nudity",
+        "explicit video",
+        "explicit content",
+        "erotic video",
+        "erotic content",
+        "xxx video",
+        "live cam",
+        "webcam sex",
+        "cam girl",
+        "camgirl",
+        "fetish",
+        "bdsm",
+        "hentai",
+        "incest",
+        "rape fantasy",
+        "sexual roleplay",
+        "chudai",
+        "nangi video",
+        "ashleel video",
+        "अश्लील",
+        "नग्न वीडियो",
+        "सेक्स वीडियो"
+    ];
+
+    if (blockedPhrases.some(phrase => value.includes(phrase))) {
+        return true;
+    }
+
+    const blockedPatterns = [
+        /\bsex\b/i,
+        /\bsexual\b/i,
+        /\bporn(?:s|ographic)?\b/i,
+        /\bnudes?\b/i,
+        /\bnaked\b/i,
+        /\bnudity\b/i,
+        /\bnsfw\b/i,
+        /\bxxx\b/i,
+        /\bboobs?\b/i,
+        /\bbreasts?\b/i,
+        /\bgenitals?\b/i,
+        /\bpenis\b/i,
+        /\bvagina\b/i,
+        /\bmasturbat(?:e|ion|ing)\b/i,
+        /\borgasm\b/i,
+        /\bfuck(?:ing)?\b/i
+    ];
+
+    return blockedPatterns.some(pattern => pattern.test(value));
+}
+
+
+// ============================================================
+// RECHECK NORMALIZED VIDEOS BEFORE CACHE / API RESPONSE
+// ============================================================
+
+function isSafeSocialVideo(item) {
+
+    if (!item || typeof item !== "object") {
+        return false;
+    }
+
+    const metadata = [
+        item.title,
+        item.description,
+        item.caption,
+        item.creatorName,
+        item.creatorId,
+        item.contentWarning,
+        item.spoilerText,
+        item.mediaDescription,
+        Array.isArray(item.tags) ? item.tags.join(" ") : ""
+    ].filter(Boolean).join(" ");
+
+    return !isAdultContent(metadata);
+}
+
+
 function containsBlueskyJunk(
     post
 ) {
@@ -1749,12 +1882,29 @@ function calculateVlogScore(post) {
     // HARD BLOCK
     // ========================================================
 
-    if (
-        containsBlockedContent(text) ||
-        containsBlueskyJunk(post)
-    ) {
-        return 0;
-    }
+    // ----------------------------------------------------
+// PRODUCTION ADULT + EXISTING HARD BLOCK
+// ----------------------------------------------------
+
+const blueskyModerationText = [
+    text,
+    post?.author?.handle,
+    post?.author?.displayName,
+    Array.isArray(post?.labels)
+        ? post.labels.map(label => label?.val || "").join(" ")
+        : "",
+    Array.isArray(post?.author?.labels)
+        ? post.author.labels.map(label => label?.val || "").join(" ")
+        : ""
+].filter(Boolean).join(" ");
+
+if (
+    isAdultContent(blueskyModerationText) ||
+    containsBlockedContent(text)
+) {
+    debug.blocked++;
+    continue;
+}
 
 
     let score = 10;
@@ -6558,7 +6708,33 @@ async function fetchMastodonVlogs(
                     )
                     .trim();
 
+// =================================================
+// ADULT CONTENT + CONTENT WARNING HARD BLOCK
+// =================================================
 
+const mastodonAdultText = [
+    moderationText,
+    status?.spoiler_text,
+    status?.account?.username,
+    status?.account?.acct,
+    status?.account?.display_name
+].filter(Boolean).join(" ");
+
+if (
+    status?.sensitive === true ||
+    isAdultContent(mastodonAdultText)
+) {
+    sensitiveBlocked++;
+
+    console.log(
+        `🚫 MASTODON ADULT BLOCK` +
+        ` | id=${status?.id || "unknown"}` +
+        ` | sensitive=${status?.sensitive === true}`
+    );
+
+    continue;
+}
+            
             // =================================================
             // HARD BLOCK
             // =================================================
@@ -8430,12 +8606,18 @@ if (
         )
     ) {
 
+        // const videos =
+        //     cacheEntry.videos
+        //         .slice(
+        //             0,
+        //             requestedLimit
+        //         );
         const videos =
-            cacheEntry.videos
-                .slice(
-                    0,
-                    requestedLimit
-                );
+    (Array.isArray(cacheEntry?.videos)
+        ? cacheEntry.videos
+        : [])
+        .filter(isSafeSocialVideo)
+        .slice(0, requestedLimit);
 
 
         console.log(
@@ -8492,12 +8674,19 @@ if (
         )
     ) {
 
+        // const videos =
+        //     cacheEntry.videos
+        //         .slice(
+        //             0,
+        //             requestedLimit
+        //         );
+
         const videos =
-            cacheEntry.videos
-                .slice(
-                    0,
-                    requestedLimit
-                );
+    (Array.isArray(cacheEntry?.videos)
+        ? cacheEntry.videos
+        : [])
+        .filter(isSafeSocialVideo)
+        .slice(0, requestedLimit);
 
 
         console.log(
@@ -8615,12 +8804,19 @@ if (
             )
         ) {
 
+            // const videos =
+            //     globalEntry.videos
+            //         .slice(
+            //             0,
+            //             requestedLimit
+            //         );
+
             const videos =
-                globalEntry.videos
-                    .slice(
-                        0,
-                        requestedLimit
-                    );
+    (Array.isArray(globalEntry?.videos)
+        ? globalEntry.videos
+        : [])
+        .filter(isSafeSocialVideo)
+        .slice(0, requestedLimit);
 
 
             console.log(
@@ -8665,12 +8861,17 @@ if (
     }
 
 
+    // const videos =
+    //     builtVideos
+    //         .slice(
+    //             0,
+    //             requestedLimit
+    //         );
+
     const videos =
-        builtVideos
-            .slice(
-                0,
-                requestedLimit
-            );
+    (Array.isArray(builtVideos) ? builtVideos : [])
+        .filter(isSafeSocialVideo)
+        .slice(0, requestedLimit);
 
 
     sendJson(
