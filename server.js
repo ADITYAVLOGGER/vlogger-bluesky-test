@@ -1590,13 +1590,26 @@ function containsBlockedContent(text) {
 
 // Exact creator identity block.
 const BLOCKED_CREATOR_IDENTITIES = new Set([
-    "18sexualfuntm"
+    "18sexualfuntm",
+    "did:plc:zpbnudmfsxox2lz4hnwa55kv"
 ]);
+
 
 function normalizeCreatorIdentity(value = "") {
     return String(value || "")
         .normalize("NFKC")
         .replace(/[Ɛɛ]/g, "e")
+        .replace(/[є]/g, "e")
+        .replace(/[х]/g, "x")
+        .replace(/[α]/g, "a")
+        .replace(/[υ]/g, "u")
+        .replace(/[с]/g, "c")
+        .replace(/[ο]/g, "o")
+        .replace(/[і]/g, "i")
+        .replace(/[е]/g, "e")
+        .replace(/[а]/g, "a")
+        .replace(/[т]/g, "t")
+        .replace(/[м]/g, "m")
         .toLowerCase()
         .replace(/[^a-z0-9]/g, "");
 }
