@@ -7700,7 +7700,7 @@ tags:
     Array.isArray(item.tags)
         ? item.tags
         : [],
-                            "",
+        
 
                         creatorAvatar:
                             item.creatorAvatar ||
