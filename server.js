@@ -6813,7 +6813,6 @@ const mastodonAdultText = [
 ].filter(Boolean).join(" ");
 
 if (
-    if (
     status?.sensitive === true ||
     isBlockedCreatorIdentity(
         status?.account?.display_name,
