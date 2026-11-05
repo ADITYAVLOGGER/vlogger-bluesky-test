@@ -1582,10 +1582,52 @@ function containsBlockedContent(text) {
 // Text/metadata based safety layer. Fail-closed for known terms.
 // ============================================================
 
+
+// ============================================================
+// CREATOR BLOCKLIST + PRODUCTION ADULT CONTENT HARD BLOCK
+// Text/metadata moderation only; it cannot inspect video frames.
+// ============================================================
+
+// Exact creator identity block.
+const BLOCKED_CREATOR_IDENTITIES = new Set([
+    "18sexualfuntm"
+]);
+
+function normalizeCreatorIdentity(value = "") {
+    return String(value || "")
+        .normalize("NFKC")
+        .replace(/[Ɛɛ]/g, "e")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+}
+
+function isBlockedCreatorIdentity(...values) {
+    return values.some(value => {
+        const normalized = normalizeCreatorIdentity(value);
+        return normalized && BLOCKED_CREATOR_IDENTITIES.has(normalized);
+    });
+}
+
+function isBlockedCreator(item) {
+    if (!item || typeof item !== "object") return false;
+
+    return isBlockedCreatorIdentity(
+        item.creatorName,
+        item.creatorHandle,
+        item.handle,
+        item.username,
+        item.displayName,
+        item.creatorId,
+        item.authorDid
+    );
+}
+
 function isAdultContent(text = "") {
 
     const rawValue = String(text || "")
-        .normalize("NFKC");
+    .normalize("NFKC")
+    .replace(/[Ɛɛ]/g, "e")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "");
 
     // Explicit 18+ creator/content indicators
     if (
@@ -1692,8 +1734,21 @@ function isSafeSocialVideo(item) {
     if (!item || typeof item !== "object") {
         return false;
     }
+    // Provider safety flags must never be ignored.
+if (
+    item.sensitive === true ||
+    item.nsfw === true ||
+    item.isAdult === true ||
+    item.adult === true
+) {
+    return false;
+}
 
-    const metadata = [
+if (isBlockedCreator(item)) {
+    return false;
+}
+
+   const metadata = [
     item.title,
     item.description,
     item.caption,
@@ -1702,11 +1757,21 @@ function isSafeSocialVideo(item) {
     item.creatorHandle,
     item.contentWarning,
     item.spoilerText,
+    item.spoiler_text,
     item.mediaDescription,
+
     Array.isArray(item.tags)
         ? item.tags.join(" ")
+        : "",
+
+    Array.isArray(item.labels)
+        ? item.labels.map(
+            label => label?.val || label?.name || ""
+        ).join(" ")
         : ""
 ].filter(Boolean).join(" ");
+
+return !isAdultContent(metadata);
 
     return !isAdultContent(metadata);
 }
@@ -1922,7 +1987,11 @@ const blueskyModerationText = [
         : ""
 ].filter(Boolean).join(" ");
 
-if (
+if (isBlockedCreatorIdentity(
+    post?.author?.displayName,
+    post?.author?.handle,
+    post?.author?.did
+) ||
     isAdultContent(blueskyModerationText) ||
     containsBlockedContent(text)
 ) {
@@ -6744,7 +6813,14 @@ const mastodonAdultText = [
 ].filter(Boolean).join(" ");
 
 if (
+    if (
     status?.sensitive === true ||
+    isBlockedCreatorIdentity(
+        status?.account?.display_name,
+        status?.account?.username,
+        status?.account?.acct,
+        status?.account?.id
+    ) ||
     isAdultContent(mastodonAdultText)
 ) {
     sensitiveBlocked++;
@@ -7042,6 +7118,16 @@ if (
 
                 creatorId,
 
+             
+
+    creatorHandle:
+        cleanText(
+            status?.account?.acct
+        ) ||
+        cleanText(
+            status?.account?.username
+        ) ||
+        "",          
                 creatorName,
 
                 creatorAvatar:
@@ -7700,6 +7786,16 @@ tags:
     Array.isArray(item.tags)
         ? item.tags
         : [],
+   
+
+sensitive:
+    item.sensitive === true,
+
+nsfw:
+    item.nsfw === true,
+
+isAdult:
+    item.isAdult === true,
         
 
                         creatorAvatar:
@@ -8555,23 +8651,50 @@ if (
                 result.cursor,
 
             videos:
-                result.posts.map(
-                    post => ({
-                        uri:
-                            post?.uri || null,
+    result.posts
+        .filter(post => {
+            const moderationText = [
+                post?.record?.text,
+                post?.author?.displayName,
+                post?.author?.handle,
+                post?.author?.did,
 
-                        creator:
-                            post?.author?.handle || null,
+                ...(Array.isArray(post?.labels)
+                    ? post.labels.map(label => label?.val || "")
+                    : []),
 
-                        text:
-                            post?.record?.text || "",
+                ...(Array.isArray(post?.author?.labels)
+                    ? post.author.labels.map(label => label?.val || "")
+                    : [])
+            ].filter(Boolean).join(" ");
 
-                        hasPlayableVideo:
-                            Boolean(
-                                extractVideo(post)
-                            )
-                    })
-                )
+            return (
+                !isBlockedCreatorIdentity(
+                    post?.author?.displayName,
+                    post?.author?.handle,
+                    post?.author?.did
+                ) &&
+                !isAdultContent(moderationText) &&
+                !containsBlockedContent(post?.record?.text || "")
+            );
+        })
+        .map(
+            post => ({
+                uri:
+                    post?.uri || null,
+
+                creator:
+                    post?.author?.handle || null,
+
+                text:
+                    post?.record?.text || "",
+
+                hasPlayableVideo:
+                    Boolean(
+                        extractVideo(post)
+                    )
+            })
+        )
         }
     );
 
@@ -9110,6 +9233,9 @@ const country =
 
                         creatorName:
                             item.creatorName,
+                        
+                        creatorHandle:
+                            item.creatorHandle,
 
                         creatorAvatar:
                             item.creatorAvatar,
@@ -9323,6 +9449,9 @@ const country =
                     creatorName:
                         item.creatorName,
 
+                    creatorHandle:
+                        item.creatorHandle,
+                    
                     creatorAvatar:
                         item.creatorAvatar,
 
