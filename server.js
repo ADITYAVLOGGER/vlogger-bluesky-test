@@ -1591,7 +1591,7 @@ function containsBlockedContent(text) {
 // Exact creator identity block.
 const BLOCKED_CREATOR_IDENTITIES = new Set([
     "18sexualfuntm",
-    "did:plc:zpbnudmfsxox2lz4hnwa55kv"
+    "didplczpbnudmfsxox2lz4hnwa55kv"
 ]);
 
 
@@ -3706,14 +3706,39 @@ junkBlocked: 0,
         // ====================================================
 
         for (
-            const post
-            of search.posts
-        ) {
+    const post
+    of search.posts
+) {
 
-            const id =
-                cleanText(
-                    post?.uri
-                );
+    // ====================================================
+    // BLOCK SPECIFIC BLUESKY CREATOR BEFORE PROCESSING
+    // ====================================================
+
+    if (
+        isBlockedCreatorIdentity(
+            post?.author?.did,
+            post?.author?.handle,
+            post?.author?.displayName
+        )
+    ) {
+
+        debug.blocked++;
+
+        console.log(
+            `🚫 BLUESKY CREATOR BLOCKED` +
+            ` | did=${post?.author?.did || "unknown"}` +
+            ` | handle=${post?.author?.handle || "unknown"}` +
+            ` | name=${post?.author?.displayName || "unknown"}` +
+            ` | post=${post?.uri || "unknown"}`
+        );
+
+        continue;
+    }
+
+    const id =
+        cleanText(
+            post?.uri
+        );
 
 
             if (!id) {
