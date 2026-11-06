@@ -5354,8 +5354,8 @@ function calculateMastodonVlogScore(
 
             score +=
                 Math.min(
-                    strongTagHits * 12,
-                    24
+                    strongTagHits * 16,
+                    32
                 );
 
         } else {
@@ -5388,7 +5388,7 @@ function calculateMastodonVlogScore(
         supportingTextEvidence > 0
     ) {
 
-        score += 12;
+        score += 18;
     }
 
 
@@ -5589,20 +5589,21 @@ const MASTODON_HASHTAGS = {
     ],
 
 
-  DEFAULT: [
+ DEFAULT: [
 
+    // PERSONAL DAILY VLOGS
     "dayinmylife",
-    "dailylife",
+    "dailyvlog",
+    "minivlog",
 
+    // TRAVEL AND FOOD VLOGS
     "travelvlog",
     "foodvlog",
 
-    "lifestyle",
-
-    "roadtrip",
-    "citylife",
-
-    "travel"
+    // FAMILY AND STUDENT VLOGS
+    "familyvlog",
+    "collegevlog",
+    "studentvlog"
 ]
 };
 
@@ -6940,7 +6941,7 @@ if (
 
 
             if (
-                vlogScore < 40
+                vlogScore < 35
             ) {
 
                 lowVlogScore++;
