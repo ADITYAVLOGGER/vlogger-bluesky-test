@@ -497,6 +497,119 @@ function cleanText(value) {
 }
 
 
+
+// ============================================================
+// VERIFIED COMMERCIAL LICENSE REGISTRY
+// ============================================================
+
+const VERIFIED_LICENSE_REGISTRY = (() => {
+
+    try {
+
+        const raw =
+            process.env.VLOGGER_VERIFIED_LICENSES_JSON || "[]";
+
+        const parsed =
+            JSON.parse(raw);
+
+        return Array.isArray(parsed)
+            ? parsed
+            : [];
+
+    } catch (error) {
+
+        console.error(
+            "LICENSE REGISTRY JSON INVALID:",
+            error.message
+        );
+
+        return [];
+    }
+
+})();
+
+
+// ============================================================
+// CHECK VERIFIED COMMERCIAL PERMISSION
+// ============================================================
+
+function getVerifiedCommercialLicense(
+    provider,
+    postId
+) {
+
+    const normalizedProvider =
+        cleanText(provider).toLowerCase();
+
+    const normalizedPostId =
+        cleanText(postId);
+
+    if (
+        !normalizedProvider ||
+        !normalizedPostId
+    ) {
+        return null;
+    }
+
+    const entry =
+        VERIFIED_LICENSE_REGISTRY.find(item => {
+
+            return (
+                cleanText(item?.provider).toLowerCase() ===
+                    normalizedProvider &&
+
+                cleanText(item?.postId) ===
+                    normalizedPostId
+            );
+
+        });
+
+    if (!entry) {
+        return null;
+    }
+
+    const licenseId =
+        cleanText(entry.licenseId).toUpperCase();
+
+    const allowedLicenses = [
+        "CC0-1.0",
+        "CC-BY-4.0",
+        "CC-BY-SA-4.0",
+        "CC-BY-ND-4.0",
+        "DIRECT_PERMISSION"
+    ];
+
+    if (
+        entry.verified !== true ||
+        entry.rightsHolderConfirmed !== true ||
+        entry.commercialUse !== true ||
+        !allowedLicenses.includes(licenseId) ||
+        !cleanText(entry.evidenceUrl) ||
+        !cleanText(entry.rightsHolderName)
+    ) {
+        return null;
+    }
+
+    if (
+        licenseId !== "DIRECT_PERMISSION" &&
+        !cleanText(entry.licenseUrl)
+    ) {
+        return null;
+    }
+
+    return {
+        licenseId,
+        licenseName: cleanText(entry.licenseName),
+        licenseUrl: cleanText(entry.licenseUrl),
+        evidenceUrl: cleanText(entry.evidenceUrl),
+        rightsHolderName: cleanText(entry.rightsHolderName),
+        verified: true,
+        commercialUse: true
+    };
+}
+
+
+
 function safeNumber(value) {
 
     const number =
@@ -3346,7 +3459,8 @@ function convertPost(
     post,
     video,
     countryCode,
-    matchedQuery
+    matchedQuery,
+    verifiedLicense
 ) {
 
     const author =
@@ -3381,6 +3495,26 @@ function convertPost(
         provider:
             "bluesky",
 
+        licenseId:
+    verifiedLicense.licenseId,
+
+licenseName:
+    verifiedLicense.licenseName,
+
+licenseUrl:
+    verifiedLicense.licenseUrl,
+
+licenseEvidenceUrl:
+    verifiedLicense.evidenceUrl,
+
+rightsHolderName:
+    verifiedLicense.rightsHolderName,
+
+licenseVerified:
+    true,
+
+commercialUseAllowed:
+    true,
         // ----------------------------------------------------
         // VIDEO
         // ----------------------------------------------------
@@ -3876,6 +4010,30 @@ const vlogScore =
             }
 
 
+            // ====================================================
+            // VERIFIED COMMERCIAL LICENSE CHECK
+            // ====================================================
+
+            const verifiedLicense =
+                getVerifiedCommercialLicense(
+                    "bluesky",
+                    post?.uri
+                );
+
+            if (!verifiedLicense) {
+
+                debug.blocked++;
+
+                console.log(
+                    `🚫 BLUESKY LICENSE BLOCK` +
+                    ` | id=${post?.uri || "unknown"}` +
+                    ` | creator=${post?.author?.handle || "unknown"}`
+                );
+
+                continue;
+            }
+
+            
             debug.vlogPassed++;
 
 
@@ -3883,13 +4041,14 @@ const vlogScore =
             // CONVERT
             // ------------------------------------------------
 
-            const candidate =
-                convertPost(
-                    post,
-                    video,
-                    countryCode,
-                    query
-                );
+           const candidate =
+    convertPost(
+        post,
+        video,
+        countryCode,
+        query,
+        verifiedLicense
+    );
 
 
             unique.set(
@@ -6960,6 +7119,26 @@ if (
                 continue;
             }
 
+            // ====================================================
+// VERIFIED COMMERCIAL LICENSE CHECK
+// ====================================================
+
+const verifiedLicense =
+    getVerifiedCommercialLicense(
+        "mastodon",
+        status?.id
+    );
+
+if (!verifiedLicense) {
+
+    console.log(
+        `🚫 MASTODON LICENSE BLOCK` +
+        ` | id=${status?.id || "unknown"}` +
+        ` | creator=${status?.account?.acct || "unknown"}`
+    );
+
+    continue;
+}
 
             vlogPassed++;
 
@@ -7124,6 +7303,28 @@ if (
                 provider:
                     "mastodon",
 
+
+                licenseId:
+    verifiedLicense.licenseId,
+
+licenseName:
+    verifiedLicense.licenseName,
+
+licenseUrl:
+    verifiedLicense.licenseUrl,
+
+licenseEvidenceUrl:
+    verifiedLicense.evidenceUrl,
+
+rightsHolderName:
+    verifiedLicense.rightsHolderName,
+
+licenseVerified:
+    true,
+
+commercialUseAllowed:
+    true,
+                
                 videoUrl,
 
                 thumbnailUrl,
@@ -7765,6 +7966,26 @@ async function buildWarmSocialFeed(
                         return null;
                     }
 
+                    // ====================================================
+// FINAL COMMERCIAL LICENSE VALIDATION
+// ====================================================
+
+if (
+    item.licenseVerified !== true ||
+    item.commercialUseAllowed !== true ||
+    !cleanText(item.licenseId) ||
+    !cleanText(item.licenseEvidenceUrl) ||
+    !cleanText(item.rightsHolderName)
+) {
+
+    console.log(
+        `🚫 WARM CACHE LICENSE BLOCK` +
+        ` | provider=${provider}` +
+        ` | id=${uniqueId}`
+    );
+
+    return null;
+}
 
                     return {
 
@@ -7776,6 +7997,28 @@ async function buildWarmSocialFeed(
                             ) ||
                             provider,
 
+                        licenseId:
+    item.licenseId,
+
+licenseName:
+    item.licenseName,
+
+licenseUrl:
+    item.licenseUrl,
+
+licenseEvidenceUrl:
+    item.licenseEvidenceUrl,
+
+rightsHolderName:
+    item.rightsHolderName,
+
+licenseVerified:
+    true,
+
+commercialUseAllowed:
+    true,
+
+                        
                         videoUrl,
 
                         thumbnailUrl:
