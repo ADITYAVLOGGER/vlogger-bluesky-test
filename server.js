@@ -252,13 +252,10 @@ function saveWarmSocialCache(
 
 
     const finalVideos =
-        Array.from(
-            unique.values()
-        )
-            .slice(
-                0,
-                WARM_SOCIAL_CACHE_LIMIT
-            );
+    rankWarmSocialVideos(
+        Array.from(unique.values()),
+        WARM_SOCIAL_CACHE_LIMIT
+    );
 
 
     warmSocialCache.set(
@@ -323,6 +320,104 @@ function isWarmSocialCacheUsable(
         Number(entry.updatedAt || 0)
     ) < WARM_SOCIAL_CACHE_STALE_MS;
 }
+
+
+function rankWarmSocialVideos(videos, limit = WARM_SOCIAL_CACHE_LIMIT) {
+
+    const safeVideos = Array.isArray(videos)
+        ? videos.filter(isSafeSocialVideo)
+        : [];
+
+    safeVideos.sort((a, b) => {
+
+        const countryDifference =
+            safeNumber(b.countryConfidence ?? b.countryScore) -
+            safeNumber(a.countryConfidence ?? a.countryScore);
+
+        if (countryDifference !== 0) return countryDifference;
+
+        const vlogDifference =
+            safeNumber(b.vlogScore) - safeNumber(a.vlogScore);
+
+        if (vlogDifference !== 0) return vlogDifference;
+
+        const engagementDifference =
+            safeNumber(b.engagementScore) - safeNumber(a.engagementScore);
+
+        if (engagementDifference !== 0) return engagementDifference;
+
+        return safeNumber(b.publishedAt) - safeNumber(a.publishedAt);
+    });
+
+    return diversifyByCreator(
+        safeVideos,
+        limit,
+        item => item?.creatorId || item?.creatorHandle || item?.creatorName || ""
+    );
+}
+
+
+function buildPersonalizedWarmVideos(country, localVideos, limit) {
+
+    const local = rankWarmSocialVideos(localVideos, limit);
+
+    if (country === "GLOBAL" || local.length >= limit) {
+
+        console.log(
+            `🎯 PERSONALIZED FEED MIX | country=${country}` +
+            ` | local=${Math.min(local.length, limit)} | globalFallback=0`
+        );
+
+        return {
+            videos: local.slice(0, limit),
+            localReturned: local.slice(0, limit).length,
+            globalFallbackReturned: 0
+        };
+    }
+
+    const globalEntry = getWarmSocialCacheEntry("GLOBAL");
+
+    const globalPool = isWarmSocialCacheUsable(globalEntry)
+        ? rankWarmSocialVideos(globalEntry.videos, WARM_SOCIAL_CACHE_LIMIT)
+        : [];
+
+    const seen = new Set();
+
+    for (const item of local) {
+
+        const id = cleanText(item.uniqueId || item.id);
+        const url = cleanText(item.videoUrl);
+
+        if (id) seen.add(id);
+        if (url) seen.add(url);
+    }
+
+    const globalFallback = globalPool
+        .filter(item => {
+
+            const id = cleanText(item.uniqueId || item.id);
+            const url = cleanText(item.videoUrl);
+
+            return (id || url) && !seen.has(id) && !seen.has(url);
+        })
+        .slice(0, Math.max(0, limit - local.length))
+        .map(item => ({ ...item }));
+
+    const videos = [...local, ...globalFallback];
+
+    console.log(
+        `🎯 PERSONALIZED FEED MIX | country=${country}` +
+        ` | local=${local.length}` +
+        ` | globalFallback=${globalFallback.length}`
+    );
+
+    return {
+        videos,
+        localReturned: local.length,
+        globalFallbackReturned: globalFallback.length
+    };
+}
+
 
 // ============================================================
 // MASTODON COUNTRY CONFIG
@@ -1310,192 +1405,121 @@ async function fetchBlueskyVideoFeed(
 
 
 
-function getCountryQueries(
-    countryCode
-) {
+
+function getCountryQueries(countryCode) {
 
     const country =
-        cleanText(countryCode)
-            .toUpperCase();
+        cleanText(countryCode).toUpperCase();
 
     switch (country) {
 
-        // ====================================================
-        // INDIA
-        // ====================================================
-
         case "IN":
-
-           return [
-
-    // ========================================================
-    // HIGH INTENT — explicit vlog
-    // ========================================================
-
-    "india vlog",
-    "indian vlog",
-    "hindi vlog",
-
-    // ========================================================
-    // PERSONAL / DAILY LIFE
-    // ========================================================
-
-    "day in my life india",
-    "daily life india",
-    "college life india",
-
-    // ========================================================
-    // LOCAL CITY DISCOVERY
-    // ========================================================
-
-    "delhi vlog",
-    "mumbai vlog",
-    "bangalore vlog",
-
-    // ========================================================
-    // LOCAL LIFESTYLE
-    // ========================================================
-
-    "street food india",
-    "travel india",
-
-    // ========================================================
-    // NATIVE LANGUAGE DISCOVERY
-    // ========================================================
-
-    "भारत vlog"
-];
-
-
-        // ====================================================
-        // JAPAN
-        // ====================================================
-
-        case "JP":
-
             return [
-                "japan vlog",
-                "japanese vlog",
-                "japan daily life",
-                "day in my life japan",
-                "tokyo vlog",
-                "japan travel",
-                "life in japan"
+                "india vlog",
+                "hindi vlog",
+                "हिंदी व्लॉग",
+                "day in my life india",
+                "delhi vlog",
+                "tamil vlog",
+                "తెలుగు vlog",
+                "বাংলা vlog",
+                "marathi vlog"
             ];
 
-
-        // ====================================================
-        // UAE
-        // ====================================================
+        case "JP":
+            return [
+                "japan vlog",
+                "日本 vlog",
+                "日常 vlog",
+                "日本生活",
+                "東京 vlog",
+                "大阪 vlog",
+                "一日 vlog",
+                "day in my life japan"
+            ];
 
         case "AE":
-
             return [
                 "dubai vlog",
                 "uae vlog",
                 "dubai daily life",
                 "day in my life dubai",
                 "life in dubai",
-                "dubai travel",
-                "dubai food"
+                "يومياتي",
+                "فلوق دبي",
+                "روتيني اليومي",
+                "الحياة في دبي"
             ];
-
-
-        // ====================================================
-        // SOUTH KOREA
-        // ====================================================
 
         case "KR":
-
             return [
                 "korea vlog",
-                "korean vlog",
-                "seoul vlog",
-                "korea daily life",
-                "life in korea"
+                "한국 브이로그",
+                "일상 브이로그",
+                "서울 브이로그",
+                "하루 일상",
+                "한국 일상",
+                "seoul vlog"
             ];
 
-
-        // ====================================================
-        // UNITED STATES
-        // ====================================================
-
         case "US":
-
             return [
                 "usa vlog",
                 "american vlog",
-                "daily vlog",
-                "day in my life",
-                "life in america",
-                "usa travel"
+                "new york vlog",
+                "los angeles vlog",
+                "chicago vlog",
+                "daily life usa",
+                "day in my life usa",
+                "life in america"
             ];
 
-
-        // ====================================================
-        // UNITED KINGDOM
-        // ====================================================
-
         case "GB":
-
             return [
                 "uk vlog",
                 "british vlog",
                 "london vlog",
+                "manchester vlog",
                 "daily life uk",
+                "day in my life uk",
                 "life in london"
             ];
 
-
-        // ====================================================
-        // GERMANY
-        // ====================================================
-
         case "DE":
-
             return [
                 "germany vlog",
                 "german vlog",
+                "deutschland vlog",
                 "berlin vlog",
-                "daily life germany",
+                "alltag vlog",
+                "mein tag",
+                "tagesvlog",
                 "leben in deutschland"
             ];
 
-
-        // ====================================================
-        // FRANCE
-        // ====================================================
-
         case "FR":
-
             return [
                 "france vlog",
                 "french vlog",
+                "vlog français",
+                "vlog quotidien",
+                "ma journée",
                 "paris vlog",
-                "daily life france"
+                "vie en france"
             ];
 
-
-        // ====================================================
-        // BRAZIL
-        // ====================================================
-
         case "BR":
-
             return [
                 "brazil vlog",
                 "brasil vlog",
-                "daily life brazil",
-                "vida no brasil"
+                "vlog diário",
+                "meu dia",
+                "rotina diária",
+                "vida no brasil",
+                "dia comigo"
             ];
 
-
-        // ====================================================
-        // GENERIC / OTHER COUNTRIES
-        // ====================================================
-
         default:
-
             return [
                 "daily vlog",
                 "day in my life",
@@ -1506,6 +1530,7 @@ function getCountryQueries(
             ];
     }
 }
+
 
 
 // ============================================================
@@ -2850,10 +2875,10 @@ function calculateCountryScore(
 
     // Country mention alone = useful, but NOT strong.
     if (
-        explicitCountryMatches > 0
-    ) {
-        score += 30;
-    }
+    explicitCountryMatches > 0
+) {
+    score += 35;
+}
 
 
     // Real city/state/region is much stronger evidence.
@@ -2882,10 +2907,11 @@ function calculateCountryScore(
 
     // Local language alone helps, but cannot prove location.
     if (
-        localLanguageMatches > 0
-    ) {
-        score += 20;
-    }
+    localLanguageMatches > 0
+) {
+    // Local language helps discovery, but alone cannot prove location.
+    score += 35;
+}
 
 
     // ========================================================
@@ -3131,16 +3157,17 @@ const COUNTRY_SIGNAL_CONFIG = {
         ],
 
         languages: [
-            "hi",
-            "bn",
-            "ta",
-            "te",
-            "mr",
-            "gu",
-            "kn",
-            "ml",
-            "pa"
-        ]
+    "hi",
+    "bn",
+    "ta",
+    "te",
+    "mr",
+    "gu",
+    "kn",
+    "ml",
+    "pa",
+    "ur"
+]
     },
 
 
@@ -3192,7 +3219,9 @@ const COUNTRY_SIGNAL_CONFIG = {
             "emirates"
         ],
 
-        languages: []
+        languages: [
+    "ar"
+]
     },
 
 
@@ -4164,45 +4193,30 @@ const vlogScore =
         Array.from(
             unique.values()
         )
-            .sort(
-                (a, b) => {
+            
+.sort(
+    (a, b) => {
 
-                    // 1. VLOG QUALITY
+        // 1. COUNTRY RELEVANCE
+        if (b.countryScore !== a.countryScore) {
+            return b.countryScore - a.countryScore;
+        }
 
-                    if (
-                        b.vlogScore !==
-                        a.vlogScore
-                    ) {
+        // 2. VLOG QUALITY
+        if (b.vlogScore !== a.vlogScore) {
+            return b.vlogScore - a.vlogScore;
+        }
 
-                        return (
-                            b.vlogScore -
-                            a.vlogScore
-                        );
-                    }
+        // 3. ENGAGEMENT
+        if (b.engagementScore !== a.engagementScore) {
+            return b.engagementScore - a.engagementScore;
+        }
 
+        // 4. NEWEST CONTENT
+        return b.publishedAt - a.publishedAt;
+    }
+)
 
-                    // 2. COUNTRY
-
-                    if (
-                        b.countryScore !==
-                        a.countryScore
-                    ) {
-
-                        return (
-                            b.countryScore -
-                            a.countryScore
-                        );
-                    }
-
-
-                    // 3. ENGAGEMENT
-
-                    return (
-                        b.engagementScore -
-                        a.engagementScore
-                    );
-                }
-            );
 
 
     // ========================================================
@@ -4685,14 +4699,14 @@ function calculateMastodonCountryScore(
 
 
     if (
-        lang &&
-        config.languages.includes(
-            lang
-        )
-    ) {
+    lang &&
+    config.languages.includes(
+        lang
+    )
+) {
 
-        score += 20;
-    }
+    score += 35;
+}
 
 
     // ========================================================
@@ -5701,151 +5715,120 @@ function calculateMastodonVlogScore(
 // MASTODON HASHTAGS
 // ============================================================
 
+
 const MASTODON_HASHTAGS = {
 
-   IN: [
-
-    // ========================================================
-    // INDIA — COUNTRY SIGNALS
-    // ========================================================
-
-    "india",
-    "indiavlog",
-    "indianvlogger",
-
-    // ========================================================
-    // INDIA — TRAVEL / FOOD
-    // ========================================================
-
-    "travelindia",
-    "indianfood",
-
-    // ========================================================
-    // MAJOR LOCAL SIGNALS
-    // ========================================================
-
-    "delhi",
-    "mumbai",
-    "bengaluru",
-
-    // ========================================================
-    // REGIONAL DISCOVERY
-    // ========================================================
-
-    "kerala",
-    "goa",
-    "ranchi",
-    "patna"
-],
-
+    IN: [
+        "india",
+        "indiavlog",
+        "hindivlog",
+        "hindivlogger",
+        "dailyvlog",
+        "minivlog",
+        "delhi",
+        "mumbai"
+    ],
 
     JP: [
-
-        "japan",
-
-        "tokyo",
-
-        "osaka",
-
-        "kyoto",
-
-        "japantravel",
-
-        "japanesefood",
-
-        "travel",
-
-        "food",
-
-        "dailylife",
-
-        "lifestyle"
+        "日本",
+        "日本生活",
+        "日常",
+        "東京",
+        "大阪",
+        "京都",
+        "日本旅行",
+        "vlog"
     ],
-
 
     AE: [
-
         "uae",
-
         "dubai",
-
         "abudhabi",
-
         "dubailife",
+        "يومياتي",
+        "فلوق",
+        "روتيني",
+        "دبي"
+    ],
 
-        "dubaitravel",
+    KR: [
+        "한국",
+        "브이로그",
+        "일상",
+        "서울",
+        "부산",
+        "한국여행",
+        "여행",
+        "vlog"
+    ],
 
-        "travel",
-
-        "food",
-
-        "dailylife",
-
+    US: [
+        "usa",
+        "nyc",
+        "newyork",
+        "losangeles",
+        "dailyvlog",
+        "dayinmylife",
+        "minivlog",
         "lifestyle"
     ],
 
+    GB: [
+        "uk",
+        "london",
+        "manchester",
+        "british",
+        "dailyvlog",
+        "dayinmylife",
+        "minivlog",
+        "lifestyle"
+    ],
 
     DE: [
-
-        "germany",
-
         "deutschland",
-
+        "deutschvlog",
+        "alltag",
         "berlin",
-
         "munich",
-
-        "hamburg",
-
-        "travel",
-
-        "food",
-
-        "dailylife",
-
-        "lifestyle"
+        "lebenindeutschland",
+        "reise",
+        "vlog"
     ],
 
+    FR: [
+        "france",
+        "vlogfrancais",
+        "quotidien",
+        "paris",
+        "lyon",
+        "voyage",
+        "lifestyle",
+        "vlog"
+    ],
 
     BR: [
-
         "brazil",
-
         "brasil",
-
         "saopaulo",
-
         "riodejaneiro",
-
         "viagem",
-
         "comida",
-
-        "travel",
-
-        "food",
-
-        "lifestyle"
+        "vidanobrasil",
+        "vlogdiario"
     ],
 
-
- DEFAULT: [
-
-    // PERSONAL DAILY VLOGS
-    "dayinmylife",
-    "dailyvlog",
-    "minivlog",
-
-    // TRAVEL AND FOOD VLOGS
-    "travelvlog",
-    "foodvlog",
-
-    // FAMILY AND STUDENT VLOGS
-    "familyvlog",
-    "collegevlog",
-    "studentvlog"
-]
+    DEFAULT: [
+        "dayinmylife",
+        "dailyvlog",
+        "minivlog",
+        "travelvlog",
+        "foodvlog",
+        "familyvlog",
+        "collegevlog",
+        "studentvlog"
+    ]
 };
+
 
 
 // ============================================================
@@ -6592,8 +6575,17 @@ async function fetchMastodonVlogs(
         );
 
 
-    const host =
-        "mastodon.social";
+    // const host =
+    //     "mastodon.social";
+
+    const configuredInstances =
+    MASTODON_COUNTRY_CONFIG[country]?.instances;
+
+const host =
+    Array.isArray(configuredInstances) &&
+    configuredInstances.length > 0
+        ? configuredInstances[0]
+        : "mastodon.social";
 
 
     const hashtags =
@@ -8298,18 +8290,23 @@ isAdult:
             // Shuffle gives the warm pool variety.
             // ------------------------------------------------
 
+            // const videos =
+            //     Array.from(
+            //         unique.values()
+            //     )
+            //         .sort(
+            //             () =>
+            //                 Math.random() - 0.5
+            //         )
+            //         .slice(
+            //             0,
+            //             WARM_SOCIAL_CACHE_LIMIT
+            //         );
             const videos =
-                Array.from(
-                    unique.values()
-                )
-                    .sort(
-                        () =>
-                            Math.random() - 0.5
-                    )
-                    .slice(
-                        0,
-                        WARM_SOCIAL_CACHE_LIMIT
-                    );
+    rankWarmSocialVideos(
+        Array.from(unique.values()),
+        WARM_SOCIAL_CACHE_LIMIT
+    );
 
 
             // ------------------------------------------------
@@ -9142,12 +9139,14 @@ if (
         //             0,
         //             requestedLimit
         //         );
-        const videos =
-    (Array.isArray(cacheEntry?.videos)
-        ? cacheEntry.videos
-        : [])
-        .filter(isSafeSocialVideo)
-        .slice(0, requestedLimit);
+        const personalizedFeed =
+    buildPersonalizedWarmVideos(
+        country,
+        cacheEntry?.videos,
+        requestedLimit
+    );
+
+const videos = personalizedFeed.videos;
 
 
         console.log(
@@ -9211,13 +9210,14 @@ if (
         //             requestedLimit
         //         );
 
-        const videos =
-    (Array.isArray(cacheEntry?.videos)
-        ? cacheEntry.videos
-        : [])
-        .filter(isSafeSocialVideo)
-        .slice(0, requestedLimit);
+const personalizedFeed =
+    buildPersonalizedWarmVideos(
+        country,
+        cacheEntry?.videos,
+        requestedLimit
+    );
 
+const videos = personalizedFeed.videos;
 
         console.log(
             `♻️ WARM STALE HIT` +
@@ -9398,10 +9398,14 @@ if (
     //             requestedLimit
     //         );
 
-    const videos =
-    (Array.isArray(builtVideos) ? builtVideos : [])
-        .filter(isSafeSocialVideo)
-        .slice(0, requestedLimit);
+    const personalizedFeed =
+    buildPersonalizedWarmVideos(
+        country,
+        builtVideos,
+        requestedLimit
+    );
+
+const videos = personalizedFeed.videos;
 
 
     sendJson(
