@@ -7067,6 +7067,21 @@ const host =
                     ""
                 );
 
+            const accountProfileFields =
+    Array.isArray(status?.account?.fields)
+        ? status.account.fields
+            .map(field =>
+                [
+                    cleanText(field?.name),
+                    stripHtml(field?.value || "")
+                ]
+                    .filter(Boolean)
+                    .join(" ")
+            )
+            .filter(Boolean)
+            .join(" ")
+        : "";
+
 
             const tags =
                 Array.isArray(
@@ -7299,7 +7314,14 @@ const countryEvidenceText = [
 const countryConfidence =
     calculateMastodonCountryScore(
         country,
-        countryEvidenceText,
+        [
+            description,
+            mediaDescription,
+            accountNote,
+            accountProfileFields
+        ]
+            .filter(Boolean)
+            .join(" "),
         status?.language,
         tags
     );
@@ -7652,6 +7674,21 @@ const possibleCountry =
     );
 
 
+if (country !== "GLOBAL") {
+    console.log(
+        `🔬 MASTODON COUNTRY SCORE SAMPLE` +
+        ` | country=${country}` +
+        ` | samples=${JSON.stringify(
+            candidates.slice(0, 8).map(item => ({
+                creator: item.creatorName,
+                score: item.countryConfidence,
+                language: item.language,
+                tags: item.tags
+            }))
+        )}`
+    );
+}
+    
 const weakCountry =
     candidates.filter(
         item =>
