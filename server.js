@@ -7067,22 +7067,7 @@ const host =
                     ""
                 );
 
-            const accountProfileFields =
-    Array.isArray(status?.account?.fields)
-        ? status.account.fields
-            .map(field =>
-                [
-                    cleanText(field?.name),
-                    stripHtml(field?.value || "")
-                ]
-                    .filter(Boolean)
-                    .join(" ")
-            )
-            .filter(Boolean)
-            .join(" ")
-        : "";
-
-
+        
             const tags =
                 Array.isArray(
                     status?.tags
