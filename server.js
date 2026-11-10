@@ -5248,7 +5248,40 @@ function calculateMastodonVlogScore(
         "join me for the day",
         "follow me for the day",
 
-        "weekend in my life"
+        "weekend in my life",
+// German personal vlog signals
+"mein tag",
+"ein tag in meinem leben",
+"mein alltag",
+"tagesablauf",
+"meine routine",
+"mein wochenende",
+"mein leben",
+
+// Portuguese personal vlog signals
+"meu dia",
+"minha rotina",
+"um dia na minha vida",
+"minha vida",
+"meu fim de semana",
+"diario de viagem",
+"diário de viagem",
+
+// Japanese personal vlog signals
+"私の一日",
+"私の日常",
+"日常生活",
+"朝のルーティン",
+"旅行の記録",
+"今日の一日",
+
+// Hindi personal vlog signals
+"मेरा दिन",
+"मेरी दिनचर्या",
+"मेरी जिंदगी",
+"आज का दिन",
+"दैनिक जीवन"
+        
     ];
 
 
@@ -6910,6 +6943,7 @@ const host =
 
 
     let videoStatuses = 0;
+    const attachmentTypeCounts = {};
 
     let vlogPassed = 0;
 
@@ -6970,6 +7004,14 @@ const host =
                     ? status.media_attachments
                     : [];
 
+            for (const media of attachments) {
+    const type = String(
+        media?.type || "unknown"
+    ).toLowerCase();
+
+    attachmentTypeCounts[type] =
+        (attachmentTypeCounts[type] || 0) + 1;
+}
 
             const video =
                 attachments.find(
@@ -7230,19 +7272,37 @@ if (!verifiedLicense) {
             // COUNTRY
             // =================================================
 
-            const countryConfidence =
-                calculateMastodonCountryScore(
-                    country,
-                    [
-                        description,
-                        mediaDescription,
-                        accountNote
-                    ]
-                        .filter(Boolean)
-                        .join(" "),
-                    status?.language,
-                    tags
-                );
+            const accountProfileFields =
+    Array.isArray(status?.account?.fields)
+        ? status.account.fields
+            .map(field =>
+                [
+                    cleanText(field?.name),
+                    stripHtml(field?.value || "")
+                ]
+                    .filter(Boolean)
+                    .join(" ")
+            )
+            .filter(Boolean)
+            .join(" ")
+        : "";
+
+const countryEvidenceText = [
+    description,
+    mediaDescription,
+    accountNote,
+    accountProfileFields
+]
+    .filter(Boolean)
+    .join(" ");
+
+const countryConfidence =
+    calculateMastodonCountryScore(
+        country,
+        countryEvidenceText,
+        status?.language,
+        tags
+    );
 
 
             // =================================================
@@ -7811,6 +7871,12 @@ console.log(
     // FINAL LOG
     // ========================================================
 
+    console.log(
+    `🐘 MASTODON ATTACHMENT TYPES` +
+    ` | country=${country}` +
+    ` | types=${JSON.stringify(attachmentTypeCounts)}`
+);
+    
     console.log(
         `🐘 MASTODON DONE` +
         ` | country=${country}` +
