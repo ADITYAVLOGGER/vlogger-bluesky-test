@@ -376,6 +376,50 @@ const MASTODON_COUNTRY_CONFIG = {
 // BASIC HELPERS
 // ============================================================
 
+// ============================================================
+// MASTODON COUNTRY INSTANCE RESOLVER
+// ============================================================
+
+function getMastodonInstances(countryCode) {
+
+    const country =
+        cleanText(countryCode || "GLOBAL")
+            .toUpperCase();
+
+    const envKey =
+        `MASTODON_INSTANCES_${country}`;
+
+    const envInstances =
+        cleanText(
+            process.env[envKey]
+        );
+
+    const configuredInstances =
+        envInstances
+            ? envInstances.split(",")
+            : (
+                MASTODON_COUNTRY_CONFIG[country]?.instances ||
+                MASTODON_COUNTRY_CONFIG.GLOBAL.instances
+            );
+
+    const safeInstances =
+        [
+            ...new Set(
+                configuredInstances
+                    .map(host =>
+                        cleanText(host).toLowerCase()
+                    )
+                    .filter(host =>
+                        /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(host)
+                    )
+            )
+        ].slice(0, 3);
+
+    return safeInstances.length > 0
+        ? safeInstances
+        : ["mastodon.social"];
+}
+
 function sendJson(
     res,
     statusCode,
@@ -6592,8 +6636,10 @@ async function fetchMastodonVlogs(
         );
 
 
-    const host =
-        "mastodon.social";
+    // const host =
+    //     "mastodon.social";
+    const hosts =
+    getMastodonInstances(country);
 
 
     const hashtags =
@@ -6676,59 +6722,127 @@ async function fetchMastodonVlogs(
     // BUILD REQUESTS
     // ========================================================
 
-    const requestTags = [];
 
+    // ========================================================
+// BUILD COUNTRY + INSTANCE REQUESTS
+// ========================================================
 
-    for (
-        const hashtag
-        of hashtags
-    ) {
+const requestTags = [];
 
-        /*
-         * On later pages an exhausted hashtag must NOT restart
-         * from page 1.
-         */
+const hasCompositeCursor =
+    Object.keys(cursorMap).some(
+        key => key.includes("::")
+    );
+
+// Old pagination cursor ko safely migrate karne ke liye.
+const legacyCursorFormat =
+    !firstPage &&
+    !hasCompositeCursor;
+
+for (const host of hosts) {
+
+    for (const hashtag of hashtags) {
+
+        const cursorKey =
+            `${host}::${hashtag}`;
+
         if (
             !firstPage &&
+            !legacyCursorFormat &&
             !Object.prototype.hasOwnProperty.call(
                 cursorMap,
-                hashtag
+                cursorKey
             )
         ) {
-
-            console.log(
-                `⏭️ MASTODON TAG EXHAUSTED` +
-                ` | tag=${hashtag}`
-            );
-
             continue;
         }
 
-
-        requestTags.push(
-            hashtag
-        );
+        requestTags.push({
+            host,
+            hashtag,
+            cursorKey
+        });
     }
+}
+    
+    // const requestTags = [];
+
+
+    // for (
+    //     const hashtag
+    //     of hashtags
+    // ) {
+
+    //     /*
+    //      * On later pages an exhausted hashtag must NOT restart
+    //      * from page 1.
+    //      */
+    //     if (
+    //         !firstPage &&
+    //         !Object.prototype.hasOwnProperty.call(
+    //             cursorMap,
+    //             hashtag
+    //         )
+    //     ) {
+
+    //         console.log(
+    //             `⏭️ MASTODON TAG EXHAUSTED` +
+    //             ` | tag=${hashtag}`
+    //         );
+
+    //         continue;
+    //     }
+
+
+    //     requestTags.push(
+    //         hashtag
+    //     );
+    // }
 
 
     // ========================================================
     // PARALLEL HASHTAG REQUESTS
     // ========================================================
 
-    const responses =
-        await Promise.all(
-            requestTags.map(
-                hashtag =>
-                    fetchMastodonHashtag(
-                        host,
-                        hashtag,
-                        firstPage
-                            ? null
-                            : cursorMap[hashtag]
-                    )
-            )
-        );
+    // const responses =
+    //     await Promise.all(
+    //         requestTags.map(
+    //             hashtag =>
+    //                 fetchMastodonHashtag(
+    //                     host,
+    //                     hashtag,
+    //                     firstPage
+    //                         ? null
+    //                         : cursorMap[hashtag]
+    //                 )
+    //         )
+    //     );
 
+    // ========================================================
+// PARALLEL INSTANCE + HASHTAG REQUESTS
+// ========================================================
+
+const responses =
+    await Promise.all(
+        requestTags.map(async request => {
+
+            const result =
+                await fetchMastodonHashtag(
+                    request.host,
+                    request.hashtag,
+
+                    firstPage || legacyCursorFormat
+                        ? null
+                        : cursorMap[request.cursorKey]
+                );
+
+            return {
+                ...result,
+                host: request.host,
+                cursorKey: request.cursorKey
+            };
+        })
+    );
 
     // ========================================================
     // BUILD NEXT PER-HASHTAG CURSORS
@@ -6777,10 +6891,16 @@ async function fetchMastodonVlogs(
             result.nextMaxId
         ) {
 
+            // nextCursorMap[
+            //     result.hashtag
+            // ] =
+            //     result.nextMaxId;
+
             nextCursorMap[
-                result.hashtag
-            ] =
-                result.nextMaxId;
+    result.cursorKey
+] =
+    result.nextMaxId;
+            
         }
     }
 
@@ -7756,11 +7876,15 @@ console.log(
     const debug = {
 
         instancesAttempted:
-            1,
+    hosts.length,
 
+        instances:
+    hosts,
+        
         hashtagsAttempted:
-            requestTags.length,
+    requestTags.length,
 
+        
         hashtagsSuccessful:
             searchesSuccessful,
 
