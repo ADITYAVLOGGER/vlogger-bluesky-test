@@ -120,23 +120,7 @@ const MASTODON_CREATOR_COUNTRY_CACHE_LIMIT =
 
 
 
-const corporateAnnouncementPatterns = [
-    /\b(?:advisory|security|technology)\s+solutions\s+(?:director|officer|manager|lead)\b.{0,120}\b(?:talks? with|speaks? with|joins?)\b/i,
 
-    /\b(?:advisory|solutions|security|technology)\s+(?:director|officer|manager|lead)\b.{0,120}\b(?:talks? with|speaks? with|joins?)\b/i,
-
-    /\b(?:today show|morning show|news show)\b.{0,100}\b(?:watch now|advisory|director|spokesperson)\b/i,
-
-    /\b(?:our company|our organisation|our organization)\b.{0,80}\b(?:announces|launches|introduces|offers)\b/i
-];
-
-if (
-    corporateAnnouncementPatterns.some(
-        pattern => pattern.test(value)
-    )
-) {
-    return true;
-}
 
 // ============================================================
 // BLUESKY CREATOR PROFILE CACHE
@@ -2205,6 +2189,20 @@ function containsBlueskyJunk(
             .trim();
 
 
+    const corporateAnnouncementPatterns = [
+    /\b(?:advisory|security|technology)\s+solutions\s+(?:director|officer|manager|lead)\b.{0,120}\b(?:talks? with|speaks? with|joins?)\b/i,
+
+    /\b(?:advisory|solutions|security|technology)\s+(?:director|officer|manager|lead)\b.{0,120}\b(?:talks? with|speaks? with|joins?)\b/i,
+
+    /\b(?:today show|morning show|news show)\b.{0,100}\b(?:watch now|advisory|director|spokesperson)\b/i,
+
+    /\b(?:our company|our organisation|our organization)\b.{0,80}\b(?:announces|launches|introduces|offers)\b/i
+];
+
+if (corporateAnnouncementPatterns.some(pattern => pattern.test(value))) {
+    return true;
+}
+    
     const author =
         post?.author || {};
 
