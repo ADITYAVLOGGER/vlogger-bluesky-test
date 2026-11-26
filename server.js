@@ -7257,6 +7257,29 @@ const responses =
                 );
 
 
+            // =================================================
+// CREATOR PROFILE LOCATION FIELDS
+// =================================================
+
+const accountProfileFields =
+    Array.isArray(status?.account?.fields)
+        ? status.account.fields
+            .map(field => {
+
+                const name =
+                    cleanText(field?.name);
+
+                const value =
+                    stripHtml(field?.value || "");
+
+                return `${name} ${value}`.trim();
+
+            })
+            .filter(Boolean)
+            .join(" ")
+        : "";
+
+
             const tags =
                 Array.isArray(
                     status?.tags
@@ -7462,19 +7485,19 @@ if (!verifiedLicense) {
             // =================================================
 
             const countryConfidence =
-                calculateMastodonCountryScore(
-                    country,
-                    [
-                        description,
-                        mediaDescription,
-                        accountNote
-                    ]
-                        .filter(Boolean)
-                        .join(" "),
-                    status?.language,
-                    tags
-                );
-
+    calculateMastodonCountryScore(
+        country,
+        [
+            description,
+            mediaDescription,
+            accountNote,
+            accountProfileFields
+        ]
+            .filter(Boolean)
+            .join(" "),
+        status?.language,
+        tags
+    );
 
             // =================================================
             // ENGAGEMENT
