@@ -3683,6 +3683,89 @@ function containsLocationSignal(
     );
 }
 
+
+// ============================================================
+// GLOBAL CREATOR PROFILE COUNTRY DETECTION
+// ============================================================
+
+function calculateCreatorProfileCountryScore(
+    description,
+    countryCode
+) {
+
+    const country =
+        cleanText(countryCode).toUpperCase();
+
+    if (!country || country === "GLOBAL") {
+        return 0;
+    }
+
+    const profileText =
+        normalizeSignalText(description);
+
+    if (!profileText) {
+        return 0;
+    }
+
+    const config =
+        getCountrySignalConfig(country);
+
+    const hasLocationContext =
+        /\b(based\s+in|living\s+in|live\s+in|located\s+in|residing\s+in|resident\s+of|originally\s+from|born\s+in|currently\s+in)\b/i
+            .test(profileText);
+
+    let countryMatch = false;
+    let cityMatch = false;
+    let weakMatch = false;
+
+    for (const signal of config.country) {
+
+        if (containsLocationSignal(profileText, signal)) {
+            countryMatch = true;
+            break;
+        }
+    }
+
+    for (const signal of config.locations) {
+
+        if (containsLocationSignal(profileText, signal)) {
+            cityMatch = true;
+            break;
+        }
+    }
+
+    for (const signal of config.weak) {
+
+        if (containsLocationSignal(profileText, signal)) {
+            weakMatch = true;
+            break;
+        }
+    }
+
+    // Country explicitly mentioned in creator profile.
+    if (countryMatch && hasLocationContext) {
+        return 80;
+    }
+
+    // City/state plus location context.
+    if (cityMatch && hasLocationContext) {
+        return countryMatch ? 95 : 70;
+    }
+
+    // Country mentioned in bio, but without clear context.
+    if (countryMatch) {
+        return 45;
+    }
+
+    // Nationality alone is not reliable location proof.
+    if (weakMatch) {
+        return 20;
+    }
+
+    return 0;
+}
+
+
 // ============================================================
 // BLUESKY ENGAGEMENT
 // ============================================================
@@ -4408,7 +4491,7 @@ if (isCountryRequest) {
                     .filter(Boolean)
             )
         ]
-        .slice(0, 12);
+        .slice(0, 24);
 
     let profilesFetched = 0;
     let profilesWithBio = 0;
@@ -4430,15 +4513,10 @@ if (isCountryRequest) {
                 }
 
                 const profileCountryScore =
-                    calculateCountryScore(
-                        {
-                            author: profile,
-                            record: {
-                                langs: []
-                            }
-                        },
-                        countryCode
-                    );
+    calculateCreatorProfileCountryScore(
+        profile.description,
+        countryCode
+    );
 
                 if (profileCountryScore >= 60) {
                     profilesWithCountrySignal++;
@@ -4479,6 +4557,12 @@ if (isCountryRequest) {
 
         item.creatorProfileCountryScore =
             result.profileCountryScore;
+    
+    // Creator profile metadata is authoritative
+// when the profile was successfully fetched.
+item.countryScore =
+    result.profileCountryScore;
+        
     }
 
     console.log(
