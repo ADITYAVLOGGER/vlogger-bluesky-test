@@ -4552,16 +4552,18 @@ if (isCountryRequest) {
 
         if (!result) continue;
 
-        item.creatorProfileDescription =
+                item.creatorProfileDescription =
             result.profile.description;
 
         item.creatorProfileCountryScore =
             result.profileCountryScore;
-    
-    // Creator profile metadata is authoritative
-// when the profile was successfully fetched.
-item.countryScore =
-    result.profileCountryScore;
+
+        // Creator profile evidence must influence
+        // the actual country ranking.
+        item.countryScore = Math.max(
+            safeNumber(item.countryScore),
+            safeNumber(result.profileCountryScore)
+        );
         
     }
 
