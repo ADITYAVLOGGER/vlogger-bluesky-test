@@ -119,6 +119,25 @@ const MASTODON_CREATOR_COUNTRY_CACHE_LIMIT =
     5000;
 
 
+
+const corporateAnnouncementPatterns = [
+    /\b(?:advisory|security|technology)\s+solutions\s+(?:director|officer|manager|lead)\b.{0,120}\b(?:talks? with|speaks? with|joins?)\b/i,
+
+    /\b(?:advisory|solutions|security|technology)\s+(?:director|officer|manager|lead)\b.{0,120}\b(?:talks? with|speaks? with|joins?)\b/i,
+
+    /\b(?:today show|morning show|news show)\b.{0,100}\b(?:watch now|advisory|director|spokesperson)\b/i,
+
+    /\b(?:our company|our organisation|our organization)\b.{0,80}\b(?:announces|launches|introduces|offers)\b/i
+];
+
+if (
+    corporateAnnouncementPatterns.some(
+        pattern => pattern.test(value)
+    )
+) {
+    return true;
+}
+
 // ============================================================
 // BLUESKY CREATOR PROFILE CACHE
 // ============================================================
@@ -3689,7 +3708,7 @@ function containsLocationSignal(
 // ============================================================
 
 function calculateCreatorProfileCountryScore(
-    description,
+    profile,
     countryCode
 ) {
 
@@ -3700,64 +3719,126 @@ function calculateCreatorProfileCountryScore(
         return 0;
     }
 
-    const profileText =
-        normalizeSignalText(description);
+    // Support both old string input and profile metadata.
+    const rawProfileText =
+        typeof profile === "string"
+            ? profile
+            : [
+                profile?.description,
+                profile?.displayName,
+                profile?.handle
+            ]
+                .filter(Boolean)
+                .join(" ");
 
-    if (!profileText) {
+    if (!rawProfileText.trim()) {
         return 0;
     }
+
+    const profileText =
+        normalizeSignalText(rawProfileText);
 
     const config =
         getCountrySignalConfig(country);
 
+    // =====================================================
+    // 1. AUTOMATIC COUNTRY FLAG DETECTION
+    // =====================================================
+
+    const countryFlag =
+        [...country]
+            .map(char =>
+                String.fromCodePoint(
+                    127397 + char.charCodeAt(0)
+                )
+            )
+            .join("");
+
+    if (rawProfileText.includes(countryFlag)) {
+        return 85;
+    }
+
+    // =====================================================
+    // 2. LOCATION CONTEXT
+    // =====================================================
+
     const hasLocationContext =
-        /\b(based\s+in|living\s+in|live\s+in|located\s+in|residing\s+in|resident\s+of|originally\s+from|born\s+in|currently\s+in)\b/i
+        /\b(based\s+in|living\s+in|live\s+in|located\s+in|residing\s+in|resident\s+of|originally\s+from|born\s+in|currently\s+in|from)\b/i
             .test(profileText);
 
     let countryMatch = false;
     let cityMatch = false;
     let weakMatch = false;
 
+    // =====================================================
+    // 3. COUNTRY NAME
+    // =====================================================
+
     for (const signal of config.country) {
 
-        if (containsLocationSignal(profileText, signal)) {
+        if (
+            containsLocationSignal(
+                profileText,
+                signal
+            )
+        ) {
             countryMatch = true;
             break;
         }
     }
 
+    // =====================================================
+    // 4. CITY / REGION
+    // =====================================================
+
     for (const signal of config.locations) {
 
-        if (containsLocationSignal(profileText, signal)) {
+        if (
+            containsLocationSignal(
+                profileText,
+                signal
+            )
+        ) {
             cityMatch = true;
             break;
         }
     }
 
+    // =====================================================
+    // 5. NATIONALITY
+    // =====================================================
+
     for (const signal of config.weak) {
 
-        if (containsLocationSignal(profileText, signal)) {
+        if (
+            containsLocationSignal(
+                profileText,
+                signal
+            )
+        ) {
             weakMatch = true;
             break;
         }
     }
 
-    // Country explicitly mentioned in creator profile.
+    // =====================================================
+    // 6. FINAL COUNTRY SCORE
+    // =====================================================
+
     if (countryMatch && hasLocationContext) {
         return 80;
     }
 
-    // City/state plus location context.
     if (cityMatch && hasLocationContext) {
         return countryMatch ? 95 : 70;
     }
 
-    // Country mentioned in bio, but without clear context.
+    // Explicit country in creator bio.
     if (countryMatch) {
         return 45;
     }
 
-    // Nationality alone is not reliable location proof.
+    // Nationality alone is weak evidence.
     if (weakMatch) {
         return 20;
     }
@@ -4514,13 +4595,13 @@ if (isCountryRequest) {
 
                 const profileCountryScore =
     calculateCreatorProfileCountryScore(
-        profile.description,
+        profile,
         countryCode
     );
 
-                if (profileCountryScore >= 60) {
-                    profilesWithCountrySignal++;
-                }
+                if (profileCountryScore >= 35) {
+    profilesWithCountrySignal++;
+}
 
                 return {
                     did,
