@@ -1538,16 +1538,41 @@ function getCountryQueries(
         // GENERIC / OTHER COUNTRIES
         // ====================================================
 
-        default:
+        
+default: {
 
-            return [
-                "daily vlog",
-                "day in my life",
-                "travel vlog",
-                "food vlog",
-                "daily life",
-                "weekend vlog"
-            ];
+    const countryName =
+        getCountryDisplayName(country);
+
+    if (!countryName) {
+
+        return [
+            "daily vlog",
+            "day in my life",
+            "travel vlog",
+            "food vlog",
+            "daily life",
+            "weekend vlog"
+        ];
+    }
+
+    return [
+
+        // Country-specific discovery
+        `${countryName} vlog`,
+        `${countryName} daily life`,
+        `day in my life ${countryName}`,
+        `life in ${countryName}`,
+        `${countryName} travel`,
+        `${countryName} food`,
+
+        // Additional personal vlog discovery
+        "daily vlog",
+        "day in my life",
+        "minivlog"
+    ];
+}
+
     }
 }
 
@@ -2894,10 +2919,14 @@ function calculateCountryScore(
 
     // Country mention alone = useful, but NOT strong.
     if (
-        explicitCountryMatches > 0
-    ) {
-        score += 30;
-    }
+    explicitCountryMatches > 0
+) {
+
+    score +=
+        COUNTRY_SIGNAL_CONFIG[country]
+            ? 30
+            : 40;
+}
 
 
     // Real city/state/region is much stronger evidence.
@@ -3402,29 +3431,66 @@ const COUNTRY_SIGNAL_CONFIG = {
 };
 
 
-function getCountrySignalConfig(
-    countryCode
-) {
 
-    const country =
-        cleanText(
-            countryCode
-        )
-            .toUpperCase();
+function getCountryDisplayName(countryCode) {
+    const code = cleanText(countryCode).toUpperCase();
 
+    if (!/^[A-Z]{2}$/.test(code) || code === "GLOBAL") {
+        return "";
+    }
 
-    return (
-        COUNTRY_SIGNAL_CONFIG[
-            country
-        ] || {
+    try {
+        const displayNames = new Intl.DisplayNames(
+            ["en"],
+            { type: "region" }
+        );
 
-            country: [],
-            locations: [],
-            weak: [],
-            languages: []
-        }
-    );
+        const name = displayNames.of(code);
+
+        return (name && name !== code)
+            ? name.trim()
+            : "";
+
+    } catch (error) {
+        return "";
+    }
 }
+
+
+function getCountrySignalConfig(countryCode) {
+    const country = cleanText(countryCode).toUpperCase();
+
+    // Existing country configurations remain unchanged.
+    const existing = COUNTRY_SIGNAL_CONFIG[country];
+
+    if (existing) {
+        return existing;
+    }
+
+    // Automatic support for other ISO countries.
+    const countryName = getCountryDisplayName(country);
+
+    const compactName = countryName
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]/g, "");
+
+    return {
+        country: [
+            ...new Set(
+                [
+                    countryName.toLowerCase(),
+                    compactName
+                ].filter(Boolean)
+            )
+        ],
+        locations: [],
+        weak: [],
+        languages: []
+    };
+}
+
 
 function escapeRegExp(
     value
@@ -4671,7 +4737,10 @@ function calculateMastodonCountryScore(
             )
         ) {
 
-            score += 70;
+            score +=
+    COUNTRY_SIGNAL_CONFIG[country]
+        ? 70
+        : 40;
         }
     }
 
@@ -5973,14 +6042,48 @@ function getMastodonHashtags(countryCode) {
     // Global discovery use karenge as safe fallback.
     // ========================================================
 
-    return [
-        ...new Set(
-            globalTags
-        )
-    ].slice(
-        0,
-        8
-    );
+    
+const countryName =
+    getCountryDisplayName(country);
+
+const countryTag =
+    countryName
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]/g, "");
+
+const countryVlogTag =
+    countryTag
+        ? `${countryTag}vlog`
+        : "";
+
+return [
+
+    ...new Set(
+
+        [
+
+            // Country-specific hashtags
+            countryTag,
+            countryVlogTag,
+
+            // Personal vlog discovery
+            "dayinmylife",
+            "dailyvlog",
+            "minivlog",
+
+            // Lifestyle discovery
+            "travelvlog",
+            "foodvlog",
+            "lifestyle"
+
+        ].filter(Boolean)
+
+    )
+
+].slice(0, 8);
+
 }
 
 // ============================================================
