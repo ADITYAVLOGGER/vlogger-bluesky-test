@@ -105,6 +105,19 @@ initializeFirebaseAdmin();
 const warmSocialCache =
     new Map();
 
+// ============================================================
+// MASTODON CREATOR COUNTRY CACHE
+// ============================================================
+
+const mastodonCreatorCountryCache =
+    new Map();
+
+const MASTODON_CREATOR_COUNTRY_TTL_MS =
+    6 * 60 * 60 * 1000;
+
+const MASTODON_CREATOR_COUNTRY_CACHE_LIMIT =
+    5000;
+
 
 function getWarmSocialCacheEntry(
     countryCode
@@ -6709,6 +6722,157 @@ function diversifyByCreator(
 
 
 // ============================================================
+// MASTODON CREATOR-FIRST COUNTRY DETECTION
+// ============================================================
+
+function getMastodonCreatorCountryConfidence(
+    countryCode,
+    account
+) {
+
+    const country =
+        cleanText(countryCode || "GLOBAL")
+            .toUpperCase();
+
+    if (!country || country === "GLOBAL") {
+        return 0;
+    }
+
+    if (!account || typeof account !== "object") {
+        return 0;
+    }
+
+    const creatorKey =
+        cleanText(account.url) ||
+        cleanText(account.acct) ||
+        cleanText(account.id);
+
+    if (!creatorKey) {
+        return 0;
+    }
+
+    const cacheKey =
+        `${country}:${creatorKey.toLowerCase()}`;
+
+    const cached =
+        mastodonCreatorCountryCache.get(cacheKey);
+
+    const now = Date.now();
+
+    if (
+        cached &&
+        now - cached.updatedAt <
+            MASTODON_CREATOR_COUNTRY_TTL_MS
+    ) {
+        return cached.confidence;
+    }
+
+    // --------------------------------------------------------
+    // PROFILE LOCATION FIELDS
+    // --------------------------------------------------------
+
+    const profileFields =
+        Array.isArray(account.fields)
+            ? account.fields
+                .filter(field => {
+
+                    const name =
+                        cleanText(field?.name);
+
+                    return /location|country|city|based|residence|home|address/i
+                        .test(name);
+                })
+                .map(field => {
+
+                    const name =
+                        cleanText(field?.name);
+
+                    const value =
+                        stripHtml(field?.value || "");
+
+                    return `${name} ${value}`.trim();
+                })
+                .filter(Boolean)
+                .join(" ")
+            : "";
+
+    // --------------------------------------------------------
+    // PROFILE LOCATION
+    // --------------------------------------------------------
+
+    const accountLocation =
+        stripHtml(account.location || "");
+
+    // --------------------------------------------------------
+    // BIO: ONLY LOCATION-CONTEXT SIGNALS
+    // --------------------------------------------------------
+
+    const accountNote =
+        stripHtml(account.note || "");
+
+    const hasLocationContext =
+        /\b(based\s+in|living\s+in|live\s+in|located\s+in|resident\s+of|originally\s+from|from)\b/i
+            .test(accountNote);
+
+    const locationBio =
+        hasLocationContext
+            ? accountNote
+            : "";
+
+    // --------------------------------------------------------
+    // CREATOR PROFILE SIGNAL
+    // --------------------------------------------------------
+
+    const profileText =
+        [
+            profileFields,
+            accountLocation,
+            locationBio
+        ]
+            .filter(Boolean)
+            .join(" ");
+
+    const confidence =
+        profileText
+            ? calculateMastodonCountryScore(
+                country,
+                profileText,
+                null,
+                []
+            )
+            : 0;
+
+    // --------------------------------------------------------
+    // CACHE RESULT
+    // --------------------------------------------------------
+
+    if (
+        mastodonCreatorCountryCache.size >=
+        MASTODON_CREATOR_COUNTRY_CACHE_LIMIT
+    ) {
+
+        const oldestKey =
+            mastodonCreatorCountryCache.keys()
+                .next()
+                .value;
+
+        if (oldestKey) {
+            mastodonCreatorCountryCache.delete(oldestKey);
+        }
+    }
+
+    mastodonCreatorCountryCache.set(
+        cacheKey,
+        {
+            confidence,
+            updatedAt: now
+        }
+    );
+
+    return confidence;
+}
+
+// ============================================================
 // FETCH MASTODON VLOGS
 // ============================================================
 
@@ -7484,19 +7648,25 @@ if (!verifiedLicense) {
             // COUNTRY
             // =================================================
 
+    //         const countryConfidence =
+    // calculateMastodonCountryScore(
+    //     country,
+    //     [
+    //         description,
+    //         mediaDescription,
+    //         accountNote,
+    //         accountProfileFields
+    //     ]
+    //         .filter(Boolean)
+    //         .join(" "),
+    //     status?.language,
+    //     tags
+    // );
+
             const countryConfidence =
-    calculateMastodonCountryScore(
+    getMastodonCreatorCountryConfidence(
         country,
-        [
-            description,
-            mediaDescription,
-            accountNote,
-            accountProfileFields
-        ]
-            .filter(Boolean)
-            .join(" "),
-        status?.language,
-        tags
+        status?.account
     );
 
             // =================================================
