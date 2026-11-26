@@ -852,6 +852,98 @@ async function blueskyGet(
     );
 }
 
+// ============================================================
+// FETCH BLUESKY CREATOR PROFILE
+// ============================================================
+
+async function fetchBlueskyCreatorProfile(did) {
+
+    const creatorDid =
+        cleanText(did);
+
+    if (!creatorDid) return null;
+
+    const now = Date.now();
+
+    const cached =
+        blueskyCreatorProfileCache.get(creatorDid);
+
+    if (
+        cached &&
+        now - cached.updatedAt <
+            BLUESKY_CREATOR_PROFILE_TTL_MS
+    ) {
+        return cached.profile;
+    }
+
+    try {
+
+        const response =
+            await blueskyGet(
+                "app.bsky.actor.getProfile",
+                {
+                    actor: creatorDid
+                }
+            );
+
+        if (!response.ok) {
+            return null;
+        }
+
+        const data =
+            await response.json();
+
+        if (
+            !data ||
+            typeof data !== "object" ||
+            !data.did
+        ) {
+            return null;
+        }
+
+        const profile = {
+            did: cleanText(data.did),
+            handle: cleanText(data.handle),
+            displayName: cleanText(data.displayName),
+            description: cleanText(data.description)
+        };
+
+        if (
+            blueskyCreatorProfileCache.size >=
+            BLUESKY_CREATOR_PROFILE_CACHE_LIMIT
+        ) {
+
+            const oldestKey =
+                blueskyCreatorProfileCache.keys()
+                    .next()
+                    .value;
+
+            if (oldestKey) {
+                blueskyCreatorProfileCache.delete(oldestKey);
+            }
+        }
+
+        blueskyCreatorProfileCache.set(
+            creatorDid,
+            {
+                profile,
+                updatedAt: now
+            }
+        );
+
+        return profile;
+
+    } catch (error) {
+
+        console.log(
+            `⚠️ BLUESKY PROFILE FETCH FAILED` +
+            ` | did=${creatorDid}` +
+            ` | error=${error.message}`
+        );
+
+        return null;
+    }
+}
 
 
 function encodeBlueskyCursor(cursorMap) {
@@ -4278,6 +4370,113 @@ const vlogScore =
         await sleep(100);
     }
 
+
+    // ========================================================
+// ENRICH TOP BLUESKY CREATORS WITH PROFILE METADATA
+// ========================================================
+
+const isCountryRequest =
+    cleanText(countryCode)
+        .toUpperCase() !== "GLOBAL";
+
+if (isCountryRequest) {
+
+    const creatorCandidates =
+        Array.from(unique.values());
+
+    const creatorIds =
+        [
+            ...new Set(
+                creatorCandidates
+                    .map(item =>
+                        cleanText(item?.creatorId)
+                    )
+                    .filter(Boolean)
+            )
+        ]
+        .slice(0, 12);
+
+    let profilesFetched = 0;
+    let profilesWithBio = 0;
+    let profilesWithCountrySignal = 0;
+
+    const profileResults =
+        await Promise.all(
+            creatorIds.map(async did => {
+
+                const profile =
+                    await fetchBlueskyCreatorProfile(did);
+
+                if (!profile) return null;
+
+                profilesFetched++;
+
+                if (profile.description) {
+                    profilesWithBio++;
+                }
+
+                const profileCountryScore =
+                    calculateCountryScore(
+                        {
+                            author: profile,
+                            record: {
+                                langs: []
+                            }
+                        },
+                        countryCode
+                    );
+
+                if (profileCountryScore >= 60) {
+                    profilesWithCountrySignal++;
+                }
+
+                return {
+                    did,
+                    profile,
+                    profileCountryScore
+                };
+            })
+        );
+
+    const profileMap = new Map();
+
+    for (const result of profileResults) {
+
+        if (!result) continue;
+
+        profileMap.set(
+            result.did,
+            result
+        );
+    }
+
+    for (const item of creatorCandidates) {
+
+        const did =
+            cleanText(item?.creatorId);
+
+        const result =
+            profileMap.get(did);
+
+        if (!result) continue;
+
+        item.creatorProfileDescription =
+            result.profile.description;
+
+        item.creatorProfileCountryScore =
+            result.profileCountryScore;
+    }
+
+    console.log(
+        `🌍 BLUESKY CREATOR METADATA` +
+        ` | country=${countryCode}` +
+        ` | creatorsChecked=${creatorIds.length}` +
+        ` | profilesFetched=${profilesFetched}` +
+        ` | profilesWithBio=${profilesWithBio}` +
+        ` | countrySignals=${profilesWithCountrySignal}`
+    );
+}
+    
 
     // ========================================================
     // RANK
