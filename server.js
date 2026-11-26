@@ -119,6 +119,20 @@ const MASTODON_CREATOR_COUNTRY_CACHE_LIMIT =
     5000;
 
 
+// ============================================================
+// BLUESKY CREATOR PROFILE CACHE
+// ============================================================
+
+const blueskyCreatorProfileCache =
+    new Map();
+
+const BLUESKY_CREATOR_PROFILE_TTL_MS =
+    6 * 60 * 60 * 1000;
+
+const BLUESKY_CREATOR_PROFILE_CACHE_LIMIT =
+    5000;
+
+
 function getWarmSocialCacheEntry(
     countryCode
 ) {
