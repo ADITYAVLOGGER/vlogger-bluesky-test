@@ -685,80 +685,109 @@ async function recordDiscoveredCreators(
         });
 
         // Preserve the original first-seen timestamp.
-        const snapshots =
-            await db.getAll(...refs);
+        
+const DISCOVERY_COUNT_COOLDOWN_MS =
+    6 * 60 * 60 * 1000;
 
-        const batch = db.batch();
+await Promise.all(
 
-        creators.forEach((creator, index) => {
+    creators.map(async (creator, index) => {
 
-            const snapshot = snapshots[index];
+        await db.runTransaction(
+            async transaction => {
 
-            const confidence =
-                creator.countryConfidence;
+                const snapshot =
+                    await transaction.get(refs[index]);
 
-            const updates = {
+                const now = Date.now();
 
-                provider: normalizedProvider,
+                const lastCountedAt =
+                    snapshot.exists
+                        ? snapshot.get("lastDiscoveryCountedAt")
+                        : null;
 
-                creatorId: creator.creatorId,
+                const lastCountedMs =
+                    lastCountedAt?.toMillis
+                        ? lastCountedAt.toMillis()
+                        : 0;
 
-                creatorName: creator.creatorName,
+                const shouldCountDiscovery =
+                    !snapshot.exists ||
+                    !lastCountedMs ||
+                    now - lastCountedMs >=
+                        DISCOVERY_COUNT_COOLDOWN_MS;
 
-                creatorHandle: creator.creatorHandle,
+                const updates = {
 
-                firstSeenAt:
-                    snapshot.exists &&
-                    snapshot.get("firstSeenAt")
-                        ? snapshot.get("firstSeenAt")
-                        : FieldValue.serverTimestamp(),
+                    provider: normalizedProvider,
+                    creatorId: creator.creatorId,
+                    creatorName: creator.creatorName,
+                    creatorHandle: creator.creatorHandle,
 
-                lastSeenAt:
-                    FieldValue.serverTimestamp(),
+                    firstSeenAt:
+                        snapshot.exists &&
+                        snapshot.get("firstSeenAt")
+                            ? snapshot.get("firstSeenAt")
+                            : FieldValue.serverTimestamp(),
 
-                discoveryCount:
-                    FieldValue.increment(1),
+                    lastSeenAt:
+                        FieldValue.serverTimestamp(),
 
-                videoCount:
-                    FieldValue.increment(
-                        creator.videoCount
-                    ),
+                    videoCount:
+                        FieldValue.increment(
+                            creator.videoCount
+                        ),
 
-                active: true
-            };
-
-            if (creator.language) {
-                updates.lastLanguage =
-                    creator.language;
-            }
-
-            // Store country evidence only when supported.
-            if (
-                /^[A-Z]{2}$/.test(country) &&
-                confidence >= 35
-            ) {
-                updates.countryConfidenceByCode = {
-                    [country]: confidence
+                    active: true
                 };
+
+                if (shouldCountDiscovery) {
+
+                    updates.discoveryCount =
+                        FieldValue.increment(1);
+
+                    updates.lastDiscoveryCountedAt =
+                        FieldValue.serverTimestamp();
+                }
+
+                if (creator.language) {
+                    updates.lastLanguage = creator.language;
+                }
+
+                if (
+                    /^[A-Z]{2}$/.test(country) &&
+                    creator.countryConfidence >= 35
+                ) {
+                    updates.countryConfidenceByCode = {
+                        [country]: creator.countryConfidence
+                    };
+                }
+
+                if (
+                    /^[A-Z]{2}$/.test(country) &&
+                    creator.countryConfidence >= 60
+                ) {
+                    updates.countries =
+                        FieldValue.arrayUnion(country);
+                }
+
+                transaction.set(
+                    refs[index],
+                    updates,
+                    { merge: true }
+                );
             }
+        );
+    })
+);
 
-            // Only strong country evidence enters country pool.
-            if (
-                /^[A-Z]{2}$/.test(country) &&
-                confidence >= 60
-            ) {
-                updates.countries =
-                    FieldValue.arrayUnion(country);
-            }
-
-            batch.set(
-                refs[index],
-                updates,
-                { merge: true }
-            );
-        });
-
-        await batch.commit();
+console.log(
+    `🌍 CREATOR REGISTRY UPDATED` +
+    ` | provider=${normalizedProvider}` +
+    ` | country=${country || "GLOBAL"}` +
+    ` | creators=${creators.length}` +
+    ` | discoveryCooldown=6h`
+);
 
         console.log(
             `🌍 CREATOR REGISTRY UPDATED` +
@@ -9261,6 +9290,32 @@ isAdult:
             ].filter(Boolean);
 
 
+
+// --------------------------------------------------------
+// SAVE DISCOVERED CREATORS TO FIRESTORE REGISTRY
+// --------------------------------------------------------
+
+// Bluesky creators
+void recordDiscoveredCreators(
+    "bluesky",
+    country,
+    combined.filter(
+        item =>
+            cleanText(item.provider).toLowerCase() === "bluesky"
+    )
+);
+
+// Mastodon creators
+void recordDiscoveredCreators(
+    "mastodon",
+    country,
+    combined.filter(
+        item =>
+            cleanText(item.provider).toLowerCase() === "mastodon"
+    )
+);
+
+            
             // ------------------------------------------------
             // REMOVE DUPLICATES
             // ------------------------------------------------
