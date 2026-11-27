@@ -9354,77 +9354,236 @@ void recordDiscoveredCreators(
 
 
             
-// ------------------------------------------------
-// MIX PROVIDERS + CREATORS
-//
-// Keep creators from dominating the warm feed.
-// Preserve provider identity so same IDs from
-// different platforms do not get grouped together.
-// ------------------------------------------------
 
-const allUniqueVideos =
-    Array.from(
-        unique.values()
-    );
+            // ====================================================
+            // COUNTRY FIRST + GLOBAL FALLBACK
+            // ====================================================
 
-const videos =
-    diversifyByCreator(
-        allUniqueVideos,
-        WARM_SOCIAL_CACHE_LIMIT,
+            // Local country videos
+            const allUniqueVideos =
+                Array.from(
+                    unique.values()
+                );
 
-        item => {
 
-            const provider =
-                cleanText(
-                    item?.provider
-                ).toLowerCase();
+            // Creator identity
+            const getCreatorKey = item => {
 
-            const creator =
-                cleanText(
-                    item?.creatorId ||
-                    item?.authorDid ||
-                    item?.creatorHandle ||
-                    item?.creatorName ||
-                    item?.username
-                ).toLowerCase();
+                const provider =
+                    cleanText(
+                        item?.provider
+                    ).toLowerCase();
 
-            return creator
-                ? `${provider}:${creator}`
-                : "";
-        }
-    );
+                const creator =
+                    cleanText(
+                        item?.creatorId ||
+                        item?.authorDid ||
+                        item?.creatorHandle ||
+                        item?.creatorName ||
+                        item?.username
+                    ).toLowerCase();
 
-const creatorCount =
-    new Set(
-        videos.map(item => {
+                return creator
+                    ? `${provider}:${creator}`
+                    : "";
+            };
 
-            const provider =
-                cleanText(
-                    item?.provider
-                ).toLowerCase();
 
-            const creator =
-                cleanText(
-                    item?.creatorId ||
-                    item?.authorDid ||
-                    item?.creatorHandle ||
-                    item?.creatorName ||
-                    item?.username
-                ).toLowerCase();
+            // Mix local creators first
+            const localVideos =
+                diversifyByCreator(
+                    allUniqueVideos,
+                    WARM_SOCIAL_CACHE_LIMIT,
+                    getCreatorKey
+                );
 
-            return creator
-                ? `${provider}:${creator}`
-                : cleanText(item?.uniqueId);
-        })
-    ).size;
 
-console.log(
-    `🎭 WARM CREATOR DIVERSITY` +
-    ` | country=${country}` +
-    ` | candidates=${allUniqueVideos.length}` +
-    ` | creators=${creatorCount}` +
-    ` | final=${videos.length}`
-);
+            // Calculate remaining slots
+            const remainingSlots =
+                Math.max(
+                    0,
+                    WARM_SOCIAL_CACHE_LIMIT -
+                    localVideos.length
+                );
+
+
+            let globalVideos = [];
+
+
+            // ====================================================
+            // GLOBAL FALLBACK
+            // ====================================================
+
+            if (
+                country !== "GLOBAL" &&
+                remainingSlots > 0
+            ) {
+
+                console.log(
+                    `🌍 GLOBAL FALLBACK START` +
+                    ` | country=${country}` +
+                    ` | local=${localVideos.length}` +
+                    ` | remaining=${remainingSlots}`
+                );
+
+
+                // Fetch GLOBAL from both providers
+                const globalResults =
+                    await Promise.allSettled([
+
+                        fetchBlueskyVlogs(
+                            "GLOBAL",
+                            20,
+                            null
+                        ),
+
+                        fetchMastodonVlogs(
+                            "GLOBAL",
+                            20,
+                            null
+                        )
+
+                    ]);
+
+
+                const globalBlueskyResult =
+                    globalResults[0].status === "fulfilled"
+                        ? globalResults[0].value
+                        : null;
+
+
+                const globalMastodonResult =
+                    globalResults[1].status === "fulfilled"
+                        ? globalResults[1].value
+                        : null;
+
+
+                const globalBlueskyVideos =
+                    Array.isArray(
+                        globalBlueskyResult?.videos
+                    )
+                        ? globalBlueskyResult.videos
+                        : [];
+
+
+                const globalMastodonVideos =
+                    Array.isArray(
+                        globalMastodonResult?.videos
+                    )
+                        ? globalMastodonResult.videos
+                        : [];
+
+
+                // Normalize GLOBAL videos.
+                // Existing license validation stays active.
+                const globalCombined = [
+
+                    ...globalBlueskyVideos.map(
+                        item =>
+                            normalizeVideo(
+                                item,
+                                "bluesky",
+                                "GLOBAL"
+                            )
+                    ),
+
+                    ...globalMastodonVideos.map(
+                        item =>
+                            normalizeVideo(
+                                item,
+                                "mastodon",
+                                "GLOBAL"
+                            )
+                    )
+
+                ].filter(Boolean);
+
+
+                // Remove local and global duplicates
+                const globalUnique =
+                    new Map();
+
+
+                for (const item of globalCombined) {
+
+                    const key =
+                        cleanText(item.uniqueId) ||
+                        cleanText(item.videoUrl);
+
+
+                    if (
+                        !key ||
+                        unique.has(key) ||
+                        globalUnique.has(key)
+                    ) {
+                        continue;
+                    }
+
+
+                    globalUnique.set(
+                        key,
+                        item
+                    );
+                }
+
+
+                // Mix GLOBAL creators
+                globalVideos =
+                    diversifyByCreator(
+                        Array.from(
+                            globalUnique.values()
+                        ),
+                        remainingSlots,
+                        getCreatorKey
+                    );
+
+
+                console.log(
+                    `🌍 GLOBAL FALLBACK DONE` +
+                    ` | country=${country}` +
+                    ` | bluesky=${globalBlueskyVideos.length}` +
+                    ` | mastodon=${globalMastodonVideos.length}` +
+                    ` | eligible=${globalUnique.size}` +
+                    ` | added=${globalVideos.length}`
+                );
+            }
+
+
+            // ====================================================
+            // FINAL FEED: LOCAL FIRST, GLOBAL AFTER
+            // ====================================================
+
+            const videos = [
+
+                ...localVideos,
+
+                ...globalVideos
+
+            ].slice(
+                0,
+                WARM_SOCIAL_CACHE_LIMIT
+            );
+
+
+            const creatorCount =
+                new Set(
+                    videos.map(
+                        item =>
+                            getCreatorKey(item) ||
+                            cleanText(item.uniqueId)
+                    )
+                ).size;
+
+
+            console.log(
+                `🎭 FINAL COUNTRY FEED` +
+                ` | country=${country}` +
+                ` | local=${localVideos.length}` +
+                ` | global=${globalVideos.length}` +
+                ` | creators=${creatorCount}` +
+                ` | final=${videos.length}`
+            );
+
 
 
 
