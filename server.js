@@ -571,6 +571,214 @@ function cleanText(value) {
 }
 
 
+// ============================================================
+// PERSISTENT CREATOR IDENTITY REGISTRY
+// ============================================================
+
+const CREATOR_REGISTRY_COLLECTION =
+    "vlogger_creator_registry";
+
+async function recordDiscoveredCreators(
+    provider,
+    countryCode,
+    videos
+) {
+    if (
+        !firebaseAdminReady ||
+        !Array.isArray(videos) ||
+        videos.length === 0
+    ) {
+        return;
+    }
+
+    try {
+
+        const normalizedProvider =
+            cleanText(provider).toLowerCase();
+
+        const country =
+            cleanText(countryCode).toUpperCase();
+
+        if (!normalizedProvider) return;
+
+        const creatorMap = new Map();
+
+        // One registry record per unique creator.
+        for (const item of videos) {
+
+            const creatorId =
+                cleanText(
+                    item?.creatorId ||
+                    item?.authorDid
+                );
+
+            // Never use display name as a unique identity.
+            if (!creatorId) continue;
+
+            const identity =
+                `${normalizedProvider}:${creatorId}`;
+
+            const existing =
+                creatorMap.get(identity);
+
+            if (existing) {
+
+                existing.videoCount++;
+
+                existing.countryConfidence =
+                    Math.max(
+                        existing.countryConfidence,
+                        safeNumber(
+                            item?.countryScore ??
+                            item?.countryConfidence
+                        )
+                    );
+
+                continue;
+            }
+
+            creatorMap.set(identity, {
+
+                creatorId,
+
+                creatorName:
+                    cleanText(item?.creatorName) ||
+                    cleanText(item?.creatorHandle),
+
+                creatorHandle:
+                    cleanText(item?.creatorHandle),
+
+                language:
+                    cleanText(item?.language),
+
+                countryConfidence:
+                    safeNumber(
+                        item?.countryScore ??
+                        item?.countryConfidence
+                    ),
+
+                videoCount: 1
+            });
+        }
+
+        const creators =
+            Array.from(creatorMap.values())
+                .slice(0, MAX_OUTPUT_LIMIT);
+
+        if (creators.length === 0) return;
+
+        const db = admin.firestore();
+
+        const FieldValue =
+            admin.firestore.FieldValue;
+
+        const refs = creators.map(creator => {
+
+            const documentId =
+                Buffer.from(
+                    `${normalizedProvider}:${creator.creatorId}`
+                ).toString("base64url");
+
+            return db
+                .collection(CREATOR_REGISTRY_COLLECTION)
+                .doc(documentId);
+        });
+
+        // Preserve the original first-seen timestamp.
+        const snapshots =
+            await db.getAll(...refs);
+
+        const batch = db.batch();
+
+        creators.forEach((creator, index) => {
+
+            const snapshot = snapshots[index];
+
+            const confidence =
+                creator.countryConfidence;
+
+            const updates = {
+
+                provider: normalizedProvider,
+
+                creatorId: creator.creatorId,
+
+                creatorName: creator.creatorName,
+
+                creatorHandle: creator.creatorHandle,
+
+                firstSeenAt:
+                    snapshot.exists &&
+                    snapshot.get("firstSeenAt")
+                        ? snapshot.get("firstSeenAt")
+                        : FieldValue.serverTimestamp(),
+
+                lastSeenAt:
+                    FieldValue.serverTimestamp(),
+
+                discoveryCount:
+                    FieldValue.increment(1),
+
+                videoCount:
+                    FieldValue.increment(
+                        creator.videoCount
+                    ),
+
+                active: true
+            };
+
+            if (creator.language) {
+                updates.lastLanguage =
+                    creator.language;
+            }
+
+            // Store country evidence only when supported.
+            if (
+                /^[A-Z]{2}$/.test(country) &&
+                confidence >= 35
+            ) {
+                updates.countryConfidenceByCode = {
+                    [country]: confidence
+                };
+            }
+
+            // Only strong country evidence enters country pool.
+            if (
+                /^[A-Z]{2}$/.test(country) &&
+                confidence >= 60
+            ) {
+                updates.countries =
+                    FieldValue.arrayUnion(country);
+            }
+
+            batch.set(
+                refs[index],
+                updates,
+                { merge: true }
+            );
+        });
+
+        await batch.commit();
+
+        console.log(
+            `🌍 CREATOR REGISTRY UPDATED` +
+            ` | provider=${normalizedProvider}` +
+            ` | country=${country || "GLOBAL"}` +
+            ` | creators=${creators.length}`
+        );
+
+    } catch (error) {
+
+        // Registry failure must never break video delivery.
+        console.error(
+            "⚠️ CREATOR REGISTRY WRITE FAILED |",
+            error?.message || error
+        );
+    }
+}
+
+
+
 
 // ============================================================
 // VERIFIED COMMERCIAL LICENSE REGISTRY
