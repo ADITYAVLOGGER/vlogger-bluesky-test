@@ -9052,10 +9052,11 @@ async function buildWarmSocialFeed(
             // ------------------------------------------------
 
             const normalizeVideo =
-                (
-                    item,
-                    provider
-                ) => {
+    (
+        item,
+        provider,
+        sourceCountry = country
+    ) => {
 
                     if (!item) {
                         return null;
@@ -9204,15 +9205,16 @@ isAdult:
                             null,
 
                         detectedCountry:
-                            item.detectedCountry ||
-                            (
-                                safeNumber(
-                                    item.countryConfidence ??
-                                    item.countryScore
-                                ) >= 60
-                                    ? country
-                                    : null
-                            ),
+    item.detectedCountry ||
+    (
+        sourceCountry !== "GLOBAL" &&
+        safeNumber(
+            item.countryConfidence ??
+            item.countryScore
+        ) >= 60
+            ? sourceCountry
+            : null
+    ),
 
                         views:
                             safeNumber(
@@ -9351,26 +9353,79 @@ void recordDiscoveredCreators(
             }
 
 
-            // ------------------------------------------------
-            // MIX PROVIDERS
-            //
-            // Engagement sorting only would allow one provider
-            // to dominate the beginning of the feed.
-            // Shuffle gives the warm pool variety.
-            // ------------------------------------------------
+            
+// ------------------------------------------------
+// MIX PROVIDERS + CREATORS
+//
+// Keep creators from dominating the warm feed.
+// Preserve provider identity so same IDs from
+// different platforms do not get grouped together.
+// ------------------------------------------------
 
-            const videos =
-                Array.from(
-                    unique.values()
-                )
-                    .sort(
-                        () =>
-                            Math.random() - 0.5
-                    )
-                    .slice(
-                        0,
-                        WARM_SOCIAL_CACHE_LIMIT
-                    );
+const allUniqueVideos =
+    Array.from(
+        unique.values()
+    );
+
+const videos =
+    diversifyByCreator(
+        allUniqueVideos,
+        WARM_SOCIAL_CACHE_LIMIT,
+
+        item => {
+
+            const provider =
+                cleanText(
+                    item?.provider
+                ).toLowerCase();
+
+            const creator =
+                cleanText(
+                    item?.creatorId ||
+                    item?.authorDid ||
+                    item?.creatorHandle ||
+                    item?.creatorName ||
+                    item?.username
+                ).toLowerCase();
+
+            return creator
+                ? `${provider}:${creator}`
+                : "";
+        }
+    );
+
+const creatorCount =
+    new Set(
+        videos.map(item => {
+
+            const provider =
+                cleanText(
+                    item?.provider
+                ).toLowerCase();
+
+            const creator =
+                cleanText(
+                    item?.creatorId ||
+                    item?.authorDid ||
+                    item?.creatorHandle ||
+                    item?.creatorName ||
+                    item?.username
+                ).toLowerCase();
+
+            return creator
+                ? `${provider}:${creator}`
+                : cleanText(item?.uniqueId);
+        })
+    ).size;
+
+console.log(
+    `🎭 WARM CREATOR DIVERSITY` +
+    ` | country=${country}` +
+    ` | candidates=${allUniqueVideos.length}` +
+    ` | creators=${creatorCount}` +
+    ` | final=${videos.length}`
+);
+
 
 
             // ------------------------------------------------
